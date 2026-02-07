@@ -7,7 +7,7 @@ import (
 )
 
 func newSQLiteSnapshotter(connString string, tables []string) (Snapshotter, error) {
-	db, err := sql.Open("sqlite3", connString)
+	db, err := sql.Open(DriverSQLite, connString)
 	if err != nil {
 		return nil, err
 	}
@@ -18,6 +18,6 @@ func newSQLiteSnapshotter(connString string, tables []string) (Snapshotter, erro
 	return &baseSnapshotter{
 		db:               db,
 		configuredTables: tables,
-		dbType:           "sqlite",
+		dbType:           DBTypeSQLite,
 	}, nil
 }

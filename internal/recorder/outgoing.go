@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -86,7 +86,7 @@ func (p *OutgoingProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var err error
 		reqBodyRaw, err = io.ReadAll(r.Body)
 		if err != nil {
-			log.Printf("OUTGOING PROXY: Failed to read request body: %v", err)
+			slog.Error("failed to read request body", "component", "outgoing_proxy", "error", err)
 			http.Error(w, "failed to read request body", http.StatusBadGateway)
 			return
 		}
@@ -105,7 +105,7 @@ func (p *OutgoingProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	outReq, err := http.NewRequest(r.Method, targetURL, bytes.NewReader(reqBodyRaw))
 	if err != nil {
-		log.Printf("OUTGOING PROXY: Failed to create forwarded request: %v", err)
+		slog.Error("failed to create forwarded request", "component", "outgoing_proxy", "error", err)
 		http.Error(w, "failed to create request", http.StatusBadGateway)
 		return
 	}
@@ -124,7 +124,7 @@ func (p *OutgoingProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Forward the request
 	resp, err := p.client.Do(outReq)
 	if err != nil {
-		log.Printf("OUTGOING PROXY: Failed to forward request to %s: %v", targetURL, err)
+		slog.Error("failed to forward request", "component", "outgoing_proxy", "url", targetURL, "error", err)
 		http.Error(w, fmt.Sprintf("failed to reach upstream: %v", err), http.StatusBadGateway)
 		return
 	}
@@ -133,7 +133,7 @@ func (p *OutgoingProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Read response body
 	respBodyRaw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("OUTGOING PROXY: Failed to read response body: %v", err)
+		slog.Error("failed to read response body", "component", "outgoing_proxy", "error", err)
 		http.Error(w, "failed to read response body", http.StatusBadGateway)
 		return
 	}
@@ -143,10 +143,10 @@ func (p *OutgoingProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	respHeaders := p.filterHeaders(resp.Header)
 
 	// Parse bodies using content-type-aware encoding
-	reqContentType := r.Header.Get("Content-Type")
+	reqContentType := r.Header.Get(snapshot.HeaderContentType)
 	parsedReqBody := snapshot.ParseBody(reqBodyRaw, reqContentType)
 
-	respContentType := resp.Header.Get("Content-Type")
+	respContentType := resp.Header.Get(snapshot.HeaderContentType)
 	parsedRespBody := snapshot.ParseBody(respBodyRaw, respContentType)
 
 	// Record the outgoing request
@@ -166,7 +166,7 @@ func (p *OutgoingProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.calls = append(p.calls, outgoing)
 	p.mu.Unlock()
 
-	log.Printf("OUTGOING PROXY: Captured %s %s -> %d", r.Method, r.URL.RequestURI(), resp.StatusCode)
+	slog.Debug("outgoing request captured", "method", r.Method, "url", r.URL.RequestURI(), "status", resp.StatusCode)
 
 	// Write response back to the service
 	for k, vv := range resp.Header {

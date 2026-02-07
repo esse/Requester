@@ -7,6 +7,7 @@ import (
 
 	"github.com/esse/snapshot-tester/internal/asserter"
 	"github.com/esse/snapshot-tester/internal/config"
+	"github.com/esse/snapshot-tester/internal/logger"
 	"github.com/esse/snapshot-tester/internal/recorder"
 	"github.com/esse/snapshot-tester/internal/replayer"
 	"github.com/esse/snapshot-tester/internal/reporter"
@@ -17,13 +18,20 @@ import (
 
 // Execute runs the CLI.
 func Execute() {
+	var logLevel string
+
 	root := &cobra.Command{
 		Use:   "snapshot-tester",
 		Short: "Record and replay service interactions for deterministic integration testing",
 		Long: `Service Snapshot Tester records the full lifecycle of HTTP requests —
 including database state before and after — and uses these snapshots to
 verify that your service behaves consistently over time.`,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			logger.Setup(logLevel)
+		},
 	}
+
+	root.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level: debug, info, warn, error")
 
 	root.AddCommand(
 		newRecordCmd(),
@@ -150,12 +158,12 @@ func newReplayCmd() *cobra.Command {
 				format = reporter.FormatJUnit
 			}
 			if outputFormat != "" {
-				switch outputFormat {
-				case "junit":
+				switch reporter.Format(outputFormat) {
+				case reporter.FormatJUnit:
 					format = reporter.FormatJUnit
-				case "tap":
+				case reporter.FormatTAP:
 					format = reporter.FormatTAP
-				case "json":
+				case reporter.FormatJSON:
 					format = reporter.FormatJSON
 				default:
 					format = reporter.FormatText

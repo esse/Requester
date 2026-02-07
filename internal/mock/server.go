@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -89,7 +89,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Body != nil {
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
-			log.Printf("MOCK: Failed to read request body: %v", err)
+			slog.Error("failed to read request body", "component", "mock", "error", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(`{"error": "failed to read request body"}`))
 			return
@@ -140,19 +140,19 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		call.Response = exp.Response
 		s.calls = append(s.calls, call)
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(snapshot.HeaderContentType, snapshot.ContentTypeJSON)
 		w.WriteHeader(exp.Response.Status)
 		if exp.Response.Body != nil {
 			data, err := json.Marshal(exp.Response.Body)
 			if err != nil {
-				log.Printf("MOCK: Failed to marshal response body: %v", err)
+				slog.Error("failed to marshal response body", "component", "mock", "error", err)
 				w.WriteHeader(http.StatusInternalServerError)
 				return
 			}
 			w.Write(data)
 		}
 	} else {
-		log.Printf("MOCK: Unexpected outgoing request: %s %s", r.Method, r.URL.String())
+		slog.Warn("unexpected outgoing request", "component", "mock", "method", r.Method, "url", r.URL.String())
 		s.calls = append(s.calls, call)
 		w.WriteHeader(http.StatusBadGateway)
 		w.Write([]byte(`{"error": "no mock expectation matched"}`))

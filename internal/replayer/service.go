@@ -3,7 +3,7 @@ package replayer
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"runtime"
@@ -44,9 +44,9 @@ func startService(cfg *config.Config, extraEnv []string) (*managedService, error
 		return nil, fmt.Errorf("starting service command %q: %w", cfg.Service.Command, err)
 	}
 
-	log.Printf("Started service (pid=%d): %s", cmd.Process.Pid, cfg.Service.Command)
+	slog.Info("service started", "pid", cmd.Process.Pid, "command", cfg.Service.Command)
 	for _, env := range extraEnv {
-		log.Printf("  env: %s", env)
+		slog.Debug("service env injected", "env", env)
 	}
 
 	// Wait for service startup
@@ -70,9 +70,9 @@ func (s *managedService) Stop() {
 	}()
 	select {
 	case <-done:
-		log.Printf("Service stopped (pid=%d)", s.cmd.Process.Pid)
+		slog.Info("service stopped", "pid", s.cmd.Process.Pid)
 	case <-time.After(5 * time.Second):
-		log.Printf("Service did not stop gracefully, killing (pid=%d)", s.cmd.Process.Pid)
+		slog.Warn("service did not stop gracefully, killing", "pid", s.cmd.Process.Pid)
 		s.cmd.Process.Kill()
 	}
 }
