@@ -83,10 +83,18 @@ func DecodeBody(body any) ([]byte, error) {
 	// Check if it's an EncodedBody (could come back as map from JSON deserialization)
 	if m, ok := body.(map[string]any); ok {
 		if enc, hasEnc := m["encoding"]; hasEnc {
-			data, _ := m["data"].(string)
+			data, ok := m["data"].(string)
+			if !ok {
+				encoded, err := json.Marshal(body)
+				return encoded, err
+			}
 			switch enc {
 			case BodyEncodingBase64:
-				return base64.StdEncoding.DecodeString(data)
+				decoded, err := base64.StdEncoding.DecodeString(data)
+				if err != nil {
+					return nil, err
+				}
+				return decoded, nil
 			case BodyEncodingText:
 				return []byte(data), nil
 			}
@@ -95,10 +103,17 @@ func DecodeBody(body any) ([]byte, error) {
 
 	// Check native EncodedBody struct
 	if eb, ok := body.(*EncodedBody); ok {
-		data, _ := eb.Data.(string)
+		data, ok := eb.Data.(string)
+		if !ok {
+			return json.Marshal(body)
+		}
 		switch eb.Encoding {
 		case BodyEncodingBase64:
-			return base64.StdEncoding.DecodeString(data)
+			decoded, err := base64.StdEncoding.DecodeString(data)
+			if err != nil {
+				return nil, err
+			}
+			return decoded, nil
 		case BodyEncodingText:
 			return []byte(data), nil
 		}

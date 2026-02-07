@@ -69,7 +69,12 @@ func (b *baseSnapshotter) RestoreAll(state map[string][]map[string]any) error {
 	if err := b.disableFKChecks(); err != nil {
 		return fmt.Errorf("disabling FK checks: %w", err)
 	}
-	defer b.enableFKChecks()
+	defer func() {
+		if err := b.enableFKChecks(); err != nil {
+			// Log the error but don't return it since we're in defer
+			fmt.Printf("Warning: Failed to re-enable FK checks: %v\n", err)
+		}
+	}()
 
 	for table, rows := range state {
 		if err := b.RestoreTable(table, rows); err != nil {
@@ -231,13 +236,15 @@ func (b *baseSnapshotter) disableFKChecks() error {
 	return nil
 }
 
-func (b *baseSnapshotter) enableFKChecks() {
+func (b *baseSnapshotter) enableFKChecks() error {
+	var err error
 	switch b.dbType {
 	case "postgres":
-		b.db.Exec("SET session_replication_role = 'origin'")
+		_, err = b.db.Exec("SET session_replication_role = 'origin'")
 	case "mysql":
-		b.db.Exec("SET FOREIGN_KEY_CHECKS = 1")
+		_, err = b.db.Exec("SET FOREIGN_KEY_CHECKS = 1")
 	case "sqlite":
-		b.db.Exec("PRAGMA foreign_keys = ON")
+		_, err = b.db.Exec("PRAGMA foreign_keys = ON")
 	}
+	return err
 }

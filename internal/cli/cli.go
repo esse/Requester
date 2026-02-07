@@ -10,6 +10,7 @@ import (
 	"github.com/esse/snapshot-tester/internal/recorder"
 	"github.com/esse/snapshot-tester/internal/replayer"
 	"github.com/esse/snapshot-tester/internal/reporter"
+	"github.com/esse/snapshot-tester/internal/security"
 	"github.com/esse/snapshot-tester/internal/snapshot"
 	"github.com/spf13/cobra"
 )
@@ -47,6 +48,11 @@ func newRecordCmd() *cobra.Command {
 		Use:   "record",
 		Short: "Start the recording proxy to capture snapshots",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate config path for security
+			if err := security.ValidateConfigPath(configPath); err != nil {
+				return fmt.Errorf("invalid config path: %w", err)
+			}
+			
 			cfg, err := config.Load(configPath)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
@@ -81,6 +87,11 @@ func newReplayCmd() *cobra.Command {
 		Use:   "replay",
 		Short: "Replay snapshots against the service and verify behavior",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate config path for security
+			if err := security.ValidateConfigPath(configPath); err != nil {
+				return fmt.Errorf("invalid config path: %w", err)
+			}
+			
 			cfg, err := config.Load(configPath)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
@@ -92,6 +103,11 @@ func newReplayCmd() *cobra.Command {
 			var paths []string
 
 			if snapshotPath != "" {
+				// Validate snapshot path for security
+				if err := security.ValidateSnapshotPath(snapshotPath, cfg.Recording.SnapshotDir); err != nil {
+					return fmt.Errorf("invalid snapshot path: %w", err)
+				}
+				
 				// Replay single snapshot
 				snap, err := store.Load(snapshotPath)
 				if err != nil {
@@ -182,6 +198,11 @@ func newListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all recorded snapshots",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate config path for security
+			if err := security.ValidateConfigPath(configPath); err != nil {
+				return fmt.Errorf("invalid config path: %w", err)
+			}
+			
 			cfg, err := config.Load(configPath)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
@@ -225,9 +246,19 @@ func newDiffCmd() *cobra.Command {
 		Use:   "diff",
 		Short: "Show the diff for a snapshot replay",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate config path for security
+			if err := security.ValidateConfigPath(configPath); err != nil {
+				return fmt.Errorf("invalid config path: %w", err)
+			}
+			
 			cfg, err := config.Load(configPath)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
+			}
+
+			// Validate snapshot path for security
+			if err := security.ValidateSnapshotPath(snapshotPath, cfg.Recording.SnapshotDir); err != nil {
+				return fmt.Errorf("invalid snapshot path: %w", err)
 			}
 
 			store := snapshot.NewStore(cfg.Recording.SnapshotDir, cfg.Recording.Format)
@@ -276,9 +307,19 @@ func newUpdateCmd() *cobra.Command {
 		Use:   "update",
 		Short: "Update a snapshot with the current service behavior",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Validate config path for security
+			if err := security.ValidateConfigPath(configPath); err != nil {
+				return fmt.Errorf("invalid config path: %w", err)
+			}
+			
 			cfg, err := config.Load(configPath)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
+			}
+
+			// Validate snapshot path for security
+			if err := security.ValidateSnapshotPath(snapshotPath, cfg.Recording.SnapshotDir); err != nil {
+				return fmt.Errorf("invalid snapshot path: %w", err)
 			}
 
 			store := snapshot.NewStore(cfg.Recording.SnapshotDir, cfg.Recording.Format)
