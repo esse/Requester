@@ -2,7 +2,7 @@ package replayer
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -78,7 +78,7 @@ func (r *Replayer) ReplayOne(snap *snapshot.Snapshot, path string) TestResult {
 
 		mockURL := fmt.Sprintf("http://%s", addr)
 		envVar := r.config.Service.MockEnvVar
-		log.Printf("Mock server at %s (injecting as %s=%s)", mockURL, envVar, mockURL)
+		slog.Info("mock server started", "url", mockURL, "env_var", envVar)
 
 		// If a service command is configured, start the service with the mock URL injected
 		if r.config.Service.Command != "" {

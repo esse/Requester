@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
@@ -71,8 +72,7 @@ func (b *baseSnapshotter) RestoreAll(state map[string][]map[string]any) error {
 	}
 	defer func() {
 		if err := b.enableFKChecks(); err != nil {
-			// Log the error but don't return it since we're in defer
-			fmt.Printf("Warning: Failed to re-enable FK checks: %v\n", err)
+			slog.Warn("failed to re-enable FK checks", "error", err)
 		}
 	}()
 

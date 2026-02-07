@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -64,11 +64,11 @@ func (r *Recorder) Start() error {
 		return fmt.Errorf("starting outgoing proxy: %w", err)
 	}
 	defer r.outgoingProxy.Stop()
-	log.Printf("Outgoing capture proxy listening on %s (set HTTP_PROXY=http://%s on service)", outAddr, outAddr)
+	slog.Info("outgoing capture proxy started", "addr", outAddr, "hint", "set HTTP_PROXY=http://"+outAddr+" on service")
 
 	addr := fmt.Sprintf(":%d", r.config.Recording.ProxyPort)
-	log.Printf("Recording proxy listening on %s, forwarding to %s", addr, r.config.Service.BaseURL)
-	log.Printf("Snapshots will be saved to %s", r.config.Recording.SnapshotDir)
+	slog.Info("recording proxy started", "addr", addr, "target", r.config.Service.BaseURL)
+	slog.Info("snapshot directory configured", "dir", r.config.Recording.SnapshotDir)
 
 	var handler http.Handler = r
 
@@ -76,12 +76,12 @@ func (r *Recorder) Start() error {
 	rl := r.config.Recording.RateLimit
 	if rl.RequestsPerSecond > 0 || rl.MaxConcurrent > 0 {
 		handler = r.withRateLimit(rl, handler)
-		log.Printf("Rate limiting enabled (rps=%.0f, max_concurrent=%d)", rl.RequestsPerSecond, rl.MaxConcurrent)
+		slog.Info("rate limiting enabled", "rps", rl.RequestsPerSecond, "max_concurrent", rl.MaxConcurrent)
 	}
 
 	if r.config.Recording.ProxyAuthToken != "" {
 		handler = r.withAuth(r.config.Recording.ProxyAuthToken, handler)
-		log.Printf("Proxy authentication enabled (Bearer token required)")
+		slog.Info("proxy authentication enabled")
 	}
 
 	server := &http.Server{
@@ -109,7 +109,7 @@ func (r *Recorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// 2. Snapshot DB before
 	dbBefore, err := r.snapshotter.SnapshotAll()
 	if err != nil {
-		log.Printf("ERROR: Failed to snapshot DB before request: %v", err)
+		slog.Error("failed to snapshot DB before request", "error", err)
 		http.Error(w, "Failed to snapshot database", http.StatusInternalServerError)
 		return
 	}
@@ -131,7 +131,7 @@ func (r *Recorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// 6. Snapshot DB after
 	dbAfter, err := r.snapshotter.SnapshotAll()
 	if err != nil {
-		log.Printf("ERROR: Failed to snapshot DB after request: %v", err)
+		slog.Error("failed to snapshot DB after request", "error", err)
 		return
 	}
 
@@ -141,12 +141,12 @@ func (r *Recorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// 8. Save snapshot
 	path, err := r.store.Save(snap)
 	if err != nil {
-		log.Printf("ERROR: Failed to save snapshot: %v", err)
+		slog.Error("failed to save snapshot", "error", err)
 		return
 	}
 
 	outCount := len(outgoingRequests)
-	log.Printf("Recorded: %s %s -> %d [%s] (%d outgoing request(s))", req.Method, req.URL.Path, recorder.statusCode, path, outCount)
+	slog.Info("snapshot recorded", "method", req.Method, "path", req.URL.Path, "status", recorder.statusCode, "file", path, "outgoing_count", outCount)
 }
 
 func (r *Recorder) buildSnapshot(req *http.Request, reqBody []byte, resp *responseRecorder, dbBefore, dbAfter map[string][]map[string]any, outgoingRequests []snapshot.OutgoingRequest) *snapshot.Snapshot {

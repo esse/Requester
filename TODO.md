@@ -178,17 +178,15 @@ recording:
 
 ### 9. Structured Logging
 
-**Status:** ❌ NOT IMPLEMENTED
+**Status:** ✅ IMPLEMENTED
 
-**Current State:**
-- Uses `log.Printf()` throughout
-- No log levels (DEBUG, INFO, WARN, ERROR)
-- No structured logging
-
-**Recommendation:**
-Use a structured logging library like `go.uber.org/zap` or `github.com/rs/zerolog`.
-
-**Estimated Effort:** LOW
+**Implementation:**
+- All `log.Printf()` calls replaced with Go's built-in `log/slog` (no external dependency)
+- Supports log levels: DEBUG, INFO, WARN, ERROR
+- Structured key-value pairs for all log messages (e.g., `"method", "GET", "status", 200`)
+- `--log-level` CLI flag to control log verbosity (default: info)
+- `internal/logger/logger.go` provides `Setup()` to configure the default handler
+- Each component uses contextual attributes (e.g., `"component", "mock"`, `"component", "outgoing_proxy"`)
 
 ---
 
@@ -232,11 +230,15 @@ const (
 
 ### 12. Missing Test Coverage
 
-**Status:** ⚠️ PARTIALLY ADDRESSED
+**Status:** ✅ SUBSTANTIALLY ADDRESSED
 
 **Tested:**
-- `internal/httpclient/client.go` - tests added for GET, POST, nil body scenarios
-- `internal/recorder/` - tests for auth, outgoing proxy, redaction, rate limiting
+- `internal/httpclient/` - GET, POST, nil body scenarios
+- `internal/recorder/` - auth middleware, outgoing proxy capture, redaction (7 cases), rate limiting
+- `internal/replayer/replayer.go` - ReplayOne success/failure, response mismatch, DB errors, request errors, outgoing requests, parallel/sequential ReplayAll
+- `internal/replayer/service.go` - empty command, short-lived command, extra env injection, nil stop, graceful stop
+- `internal/cli/helpers.go` - fireRequestForUpdate, computeDiffForUpdate, newSnapshotterForUpdate error
+- `internal/logger/` - all log levels, case insensitivity, unknown level fallback
 - `internal/asserter/` - existing tests
 - `internal/config/` - existing tests
 - `internal/db/` - existing tests
@@ -246,14 +248,10 @@ const (
 - `internal/snapshot/` - existing tests
 
 **Still Not Tested:**
-- `internal/cli/` - no tests (command integration tests)
-- `internal/replayer/` - no tests (requires running service)
-- Error scenarios (DB connection failures, corrupt snapshots, network timeouts)
-- Integration tests (end-to-end workflows)
+- CLI command integration tests (requires full cobra command execution)
+- End-to-end integration tests (full record + replay workflow)
 
-**Estimated Effort:** HIGH
-
-**Priority:** MEDIUM
+**Priority:** LOW (remaining gaps are integration-level)
 
 ---
 
@@ -270,10 +268,10 @@ const (
 | Proxy authentication | ✅ Implemented | HIGH | - |
 | Deduplicate request firing | ✅ Fixed | MEDIUM | - |
 | MongoDB/Redis support | ❌ Not implemented | MEDIUM | HIGH |
-| Structured logging | ❌ Not implemented | LOW | LOW |
+| Structured logging | ✅ Implemented | LOW | - |
 | Constants for magic strings | ❌ Not fixed | LOW | LOW |
-| Test coverage | ⚠️ Partial | MEDIUM | HIGH |
+| Test coverage | ✅ Substantial | MEDIUM | - |
 
 **Remaining Work:**
-1. **Low Priority:** Structured logging, constants for magic strings
-2. **Long-term:** MongoDB/Redis support, comprehensive test coverage
+1. **Low Priority:** Constants for magic strings
+2. **Long-term:** MongoDB/Redis support, CLI integration tests
