@@ -7,6 +7,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Supported database types (must match db.DBType* constants).
+const (
+	dbTypePostgres = "postgres"
+	dbTypeMySQL    = "mysql"
+	dbTypeSQLite   = "sqlite"
+)
+
+// Snapshot format identifiers (must match snapshot.Format* constants).
+const (
+	formatJSON = "json"
+	formatYAML = "yaml"
+)
+
+// Default configuration values.
+const (
+	defaultSnapshotDir  = "./snapshots"
+	defaultFormat       = formatJSON
+	defaultProxyPort    = 8080
+	defaultTimeoutMs    = 5000
+	defaultMockEnvVar   = "SNAPSHOT_MOCK_URL"
+	defaultStartupTimeMs = 2000
+)
+
 // Config represents the top-level configuration for snapshot-tester.
 type Config struct {
 	Service   ServiceConfig   `yaml:"service"`
@@ -80,22 +103,22 @@ func Load(path string) (*Config, error) {
 
 	// Apply defaults
 	if cfg.Recording.SnapshotDir == "" {
-		cfg.Recording.SnapshotDir = "./snapshots"
+		cfg.Recording.SnapshotDir = defaultSnapshotDir
 	}
 	if cfg.Recording.Format == "" {
-		cfg.Recording.Format = "json"
+		cfg.Recording.Format = defaultFormat
 	}
 	if cfg.Recording.ProxyPort == 0 {
-		cfg.Recording.ProxyPort = 8080
+		cfg.Recording.ProxyPort = defaultProxyPort
 	}
 	if cfg.Replay.TimeoutMs == 0 {
-		cfg.Replay.TimeoutMs = 5000
+		cfg.Replay.TimeoutMs = defaultTimeoutMs
 	}
 	if cfg.Service.MockEnvVar == "" {
-		cfg.Service.MockEnvVar = "SNAPSHOT_MOCK_URL"
+		cfg.Service.MockEnvVar = defaultMockEnvVar
 	}
 	if cfg.Service.StartupTimeMs == 0 {
-		cfg.Service.StartupTimeMs = 2000
+		cfg.Service.StartupTimeMs = defaultStartupTimeMs
 	}
 
 	return cfg, nil
@@ -125,7 +148,7 @@ func (c *Config) validate() error {
 		return fmt.Errorf("database.type is required")
 	}
 	switch c.Database.Type {
-	case "postgres", "mysql", "sqlite":
+	case dbTypePostgres, dbTypeMySQL, dbTypeSQLite:
 		// ok
 	default:
 		return fmt.Errorf("unsupported database type: %s (must be postgres, mysql, or sqlite)", c.Database.Type)
@@ -133,7 +156,7 @@ func (c *Config) validate() error {
 	if c.Database.ConnectionString == "" {
 		return fmt.Errorf("database.connection_string is required")
 	}
-	if c.Recording.Format != "" && c.Recording.Format != "json" && c.Recording.Format != "yaml" {
+	if c.Recording.Format != "" && c.Recording.Format != formatJSON && c.Recording.Format != formatYAML {
 		return fmt.Errorf("recording.format must be json or yaml")
 	}
 	return nil

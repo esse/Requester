@@ -163,11 +163,11 @@ func (r *Recorder) buildSnapshot(req *http.Request, reqBody []byte, resp *respon
 	}
 
 	// Parse request body (handles JSON, text, and binary/RPC payloads like protobuf)
-	reqContentType := req.Header.Get("Content-Type")
+	reqContentType := req.Header.Get(snapshot.HeaderContentType)
 	parsedReqBody := snapshot.ParseBody(reqBody, reqContentType)
 
 	// Parse response body (handles JSON, text, and binary/RPC payloads like protobuf)
-	respContentType := resp.Header().Get("Content-Type")
+	respContentType := resp.Header().Get(snapshot.HeaderContentType)
 	parsedRespBody := snapshot.ParseBody(resp.body, respContentType)
 
 	// Response headers
@@ -220,23 +220,22 @@ func (r *Recorder) Close() error {
 // withAuth wraps a handler with Bearer token authentication.
 func (r *Recorder) withAuth(token string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		auth := req.Header.Get("Authorization")
+		auth := req.Header.Get(snapshot.HeaderAuthorization)
 		if auth == "" {
-			w.Header().Set("WWW-Authenticate", `Bearer realm="snapshot-tester"`)
+			w.Header().Set(snapshot.HeaderWWWAuthenticate, `Bearer realm="snapshot-tester"`)
 			http.Error(w, "Authorization required", http.StatusUnauthorized)
 			return
 		}
-		const prefix = "Bearer "
-		if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
+		if len(auth) < len(snapshot.AuthSchemeBearer) || !strings.EqualFold(auth[:len(snapshot.AuthSchemeBearer)], snapshot.AuthSchemeBearer) {
 			http.Error(w, "Invalid authorization scheme, expected Bearer", http.StatusUnauthorized)
 			return
 		}
-		if auth[len(prefix):] != token {
+		if auth[len(snapshot.AuthSchemeBearer):] != token {
 			http.Error(w, "Invalid token", http.StatusForbidden)
 			return
 		}
 		// Strip the auth header before proxying so it doesn't leak to the service
-		req.Header.Del("Authorization")
+		req.Header.Del(snapshot.HeaderAuthorization)
 		next.ServeHTTP(w, req)
 	})
 }

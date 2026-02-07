@@ -158,12 +158,12 @@ func newReplayCmd() *cobra.Command {
 				format = reporter.FormatJUnit
 			}
 			if outputFormat != "" {
-				switch outputFormat {
-				case "junit":
+				switch reporter.Format(outputFormat) {
+				case reporter.FormatJUnit:
 					format = reporter.FormatJUnit
-				case "tap":
+				case reporter.FormatTAP:
 					format = reporter.FormatTAP
-				case "json":
+				case reporter.FormatJSON:
 					format = reporter.FormatJSON
 				default:
 					format = reporter.FormatText

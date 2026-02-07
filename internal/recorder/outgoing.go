@@ -143,10 +143,10 @@ func (p *OutgoingProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	respHeaders := p.filterHeaders(resp.Header)
 
 	// Parse bodies using content-type-aware encoding
-	reqContentType := r.Header.Get("Content-Type")
+	reqContentType := r.Header.Get(snapshot.HeaderContentType)
 	parsedReqBody := snapshot.ParseBody(reqBodyRaw, reqContentType)
 
-	respContentType := resp.Header.Get("Content-Type")
+	respContentType := resp.Header.Get(snapshot.HeaderContentType)
 	parsedRespBody := snapshot.ParseBody(respBodyRaw, respContentType)
 
 	// Record the outgoing request

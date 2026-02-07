@@ -79,7 +79,7 @@ func (s *Store) LoadAll() ([]*Snapshot, []string, error) {
 		if info.IsDir() {
 			return nil
 		}
-		if !strings.HasSuffix(path, ".snapshot.json") && !strings.HasSuffix(path, ".snapshot.yaml") && !strings.HasSuffix(path, ".snapshot.yml") {
+		if !strings.HasSuffix(path, ".snapshot."+FormatJSON) && !strings.HasSuffix(path, ".snapshot."+FormatYAML) && !strings.HasSuffix(path, ".snapshot."+FormatYML) {
 			return nil
 		}
 
@@ -197,14 +197,14 @@ func (s *Store) nextSeqNumber(dir string) (int, error) {
 }
 
 func (s *Store) extension() string {
-	if s.Format == "yaml" || s.Format == "yml" {
-		return "yaml"
+	if s.Format == FormatYAML || s.Format == FormatYML {
+		return FormatYAML
 	}
-	return "json"
+	return FormatJSON
 }
 
 func (s *Store) marshal(snap *Snapshot) ([]byte, error) {
-	if s.Format == "yaml" || s.Format == "yml" {
+	if s.Format == FormatYAML || s.Format == FormatYML {
 		return yaml.Marshal(snap)
 	}
 	return json.MarshalIndent(snap, "", "  ")

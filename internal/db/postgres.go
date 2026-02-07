@@ -7,7 +7,7 @@ import (
 )
 
 func newPostgresSnapshotter(connString string, tables []string) (Snapshotter, error) {
-	db, err := sql.Open("postgres", connString)
+	db, err := sql.Open(DriverPostgres, connString)
 	if err != nil {
 		return nil, err
 	}
@@ -18,6 +18,6 @@ func newPostgresSnapshotter(connString string, tables []string) (Snapshotter, er
 	return &baseSnapshotter{
 		db:               db,
 		configuredTables: tables,
-		dbType:           "postgres",
+		dbType:           DBTypePostgres,
 	}, nil
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func newMySQLSnapshotter(connString string, tables []string) (Snapshotter, error) {
-	db, err := sql.Open("mysql", connString)
+	db, err := sql.Open(DriverMySQL, connString)
 	if err != nil {
 		return nil, err
 	}
@@ -18,6 +18,6 @@ func newMySQLSnapshotter(connString string, tables []string) (Snapshotter, error
 	return &baseSnapshotter{
 		db:               db,
 		configuredTables: tables,
-		dbType:           "mysql",
+		dbType:           DBTypeMySQL,
 	}, nil
 }

@@ -204,25 +204,13 @@ recording:
 
 ### 11. Replace Magic Strings with Constants
 
-**Status:** ❌ NOT FIXED
+**Status:** ✅ FIXED
 
-**Examples:**
-- Database discovery queries hardcoded
-- Content-type strings scattered throughout
-- Field names ("id", "status", "body")
-
-**Recommendation:**
-```go
-const (
-    ContentTypeJSON = "application/json"
-    ContentTypeProtobuf = "application/protobuf"
-    // ...
-)
-```
-
-**Estimated Effort:** LOW
-
-**Priority:** LOW (code quality)
+**Implementation:**
+- `internal/db/constants.go`: Database type constants (`DBTypePostgres`, `DBTypeMySQL`, `DBTypeSQLite`), driver names (`DriverPostgres`, `DriverMySQL`, `DriverSQLite`), and table discovery queries (`PostgresDiscoverTablesQuery`, etc.)
+- `internal/snapshot/constants.go`: Content type (`ContentTypeJSON`), HTTP headers (`HeaderContentType`, `HeaderAuthorization`, `HeaderWWWAuthenticate`), format identifiers (`FormatJSON`, `FormatYAML`, `FormatYML`), auth scheme (`AuthSchemeBearer`), and default values (`DefaultMockEnvVar`)
+- `internal/config/config.go`: Package-local constants for database types, formats, and default configuration values
+- All switch statements, header accesses, and format checks updated to use named constants
 
 ---
 
@@ -247,11 +235,22 @@ const (
 - `internal/security/` - existing tests
 - `internal/snapshot/` - existing tests
 
+**End-to-End Tests Added:**
+- `internal/e2e/e2e_test.go` - 9 comprehensive integration tests:
+  - Record-and-replay GET (full cycle with real SQLite)
+  - Record-and-replay POST with DB mutation
+  - Replay mismatch detection
+  - Snapshot store round-trip
+  - Multiple snapshots with ReplayAll
+  - Field-level redaction end-to-end
+  - Mock server integration during replay
+  - Real SQLite snapshotter operations
+  - YAML format end-to-end
+
 **Still Not Tested:**
 - CLI command integration tests (requires full cobra command execution)
-- End-to-end integration tests (full record + replay workflow)
 
-**Priority:** LOW (remaining gaps are integration-level)
+**Priority:** LOW (remaining gaps are CLI-level only)
 
 ---
 
@@ -269,9 +268,8 @@ const (
 | Deduplicate request firing | ✅ Fixed | MEDIUM | - |
 | MongoDB/Redis support | ❌ Not implemented | MEDIUM | HIGH |
 | Structured logging | ✅ Implemented | LOW | - |
-| Constants for magic strings | ❌ Not fixed | LOW | LOW |
+| Constants for magic strings | ✅ Fixed | LOW | - |
 | Test coverage | ✅ Substantial | MEDIUM | - |
 
 **Remaining Work:**
-1. **Low Priority:** Constants for magic strings
-2. **Long-term:** MongoDB/Redis support, CLI integration tests
+1. **Long-term:** MongoDB/Redis support, CLI command integration tests

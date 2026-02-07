@@ -26,11 +26,11 @@ type Snapshotter interface {
 // NewSnapshotter creates a Snapshotter for the given database type.
 func NewSnapshotter(dbType, connString string, tables []string) (Snapshotter, error) {
 	switch dbType {
-	case "postgres":
+	case DBTypePostgres:
 		return newPostgresSnapshotter(connString, tables)
-	case "mysql":
+	case DBTypeMySQL:
 		return newMySQLSnapshotter(connString, tables)
-	case "sqlite":
+	case DBTypeSQLite:
 		return newSQLiteSnapshotter(connString, tables)
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", dbType)
@@ -178,12 +178,12 @@ func (b *baseSnapshotter) RestoreTable(table string, rows []map[string]any) erro
 
 func (b *baseSnapshotter) discoverTables() ([]string, error) {
 	switch b.dbType {
-	case "postgres":
-		return b.queryStrings("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-	case "mysql":
-		return b.queryStrings("SHOW TABLES")
-	case "sqlite":
-		return b.queryStrings("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+	case DBTypePostgres:
+		return b.queryStrings(PostgresDiscoverTablesQuery)
+	case DBTypeMySQL:
+		return b.queryStrings(MySQLDiscoverTablesQuery)
+	case DBTypeSQLite:
+		return b.queryStrings(SQLiteDiscoverTablesQuery)
 	default:
 		return nil, fmt.Errorf("unsupported db type for discovery: %s", b.dbType)
 	}
@@ -220,7 +220,7 @@ func (b *baseSnapshotter) queryStrings(query string) ([]string, error) {
 // trusted configuration only, not directly from user input.
 func (b *baseSnapshotter) quoteIdentifier(name string) string {
 	switch b.dbType {
-	case "mysql":
+	case DBTypeMySQL:
 		return "`" + strings.ReplaceAll(name, "`", "``") + "`"
 	default:
 		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
@@ -229,7 +229,7 @@ func (b *baseSnapshotter) quoteIdentifier(name string) string {
 
 func (b *baseSnapshotter) placeholder(index int) string {
 	switch b.dbType {
-	case "postgres":
+	case DBTypePostgres:
 		return fmt.Sprintf("$%d", index+1)
 	default:
 		return "?"
@@ -238,13 +238,13 @@ func (b *baseSnapshotter) placeholder(index int) string {
 
 func (b *baseSnapshotter) disableFKChecks() error {
 	switch b.dbType {
-	case "postgres":
+	case DBTypePostgres:
 		_, err := b.db.Exec("SET session_replication_role = 'replica'")
 		return err
-	case "mysql":
+	case DBTypeMySQL:
 		_, err := b.db.Exec("SET FOREIGN_KEY_CHECKS = 0")
 		return err
-	case "sqlite":
+	case DBTypeSQLite:
 		_, err := b.db.Exec("PRAGMA foreign_keys = OFF")
 		return err
 	}
@@ -254,11 +254,11 @@ func (b *baseSnapshotter) disableFKChecks() error {
 func (b *baseSnapshotter) enableFKChecks() error {
 	var err error
 	switch b.dbType {
-	case "postgres":
+	case DBTypePostgres:
 		_, err = b.db.Exec("SET session_replication_role = 'origin'")
-	case "mysql":
+	case DBTypeMySQL:
 		_, err = b.db.Exec("SET FOREIGN_KEY_CHECKS = 1")
-	case "sqlite":
+	case DBTypeSQLite:
 		_, err = b.db.Exec("PRAGMA foreign_keys = ON")
 	}
 	return err

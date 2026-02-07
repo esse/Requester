@@ -140,7 +140,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		call.Response = exp.Response
 		s.calls = append(s.calls, call)
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set(snapshot.HeaderContentType, snapshot.ContentTypeJSON)
 		w.WriteHeader(exp.Response.Status)
 		if exp.Response.Body != nil {
 			data, err := json.Marshal(exp.Response.Body)

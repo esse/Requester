@@ -55,7 +55,7 @@ func FireRequest(baseURL string, req snapshot.Request, timeoutMs int) (*snapshot
 
 	var parsedBody any
 	if len(respBody) > 0 {
-		respContentType := resp.Header.Get("Content-Type")
+		respContentType := resp.Header.Get(snapshot.HeaderContentType)
 		parsedBody = snapshot.ParseBody(respBody, respContentType)
 	}
 
