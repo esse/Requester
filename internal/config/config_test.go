@@ -1,0 +1,145 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestLoad(t *testing.T) {
+	content := `
+service:
+  name: "test-api"
+  base_url: "http://localhost:3000"
+database:
+  type: "sqlite"
+  connection_string: ":memory:"
+  tables:
+    - users
+    - orders
+recording:
+  proxy_port: 9090
+  snapshot_dir: "./test-snapshots"
+  format: "json"
+  ignore_headers:
+    - Authorization
+  ignore_fields:
+    - "*.created_at"
+replay:
+  test_database:
+    connection_string: ":memory:"
+  strict_mode: true
+  timeout_ms: 3000
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if cfg.Service.Name != "test-api" {
+		t.Errorf("expected service name 'test-api', got %q", cfg.Service.Name)
+	}
+	if cfg.Service.BaseURL != "http://localhost:3000" {
+		t.Errorf("expected base_url 'http://localhost:3000', got %q", cfg.Service.BaseURL)
+	}
+	if cfg.Database.Type != "sqlite" {
+		t.Errorf("expected db type 'sqlite', got %q", cfg.Database.Type)
+	}
+	if len(cfg.Database.Tables) != 2 {
+		t.Errorf("expected 2 tables, got %d", len(cfg.Database.Tables))
+	}
+	if cfg.Recording.ProxyPort != 9090 {
+		t.Errorf("expected proxy_port 9090, got %d", cfg.Recording.ProxyPort)
+	}
+	if cfg.Recording.Format != "json" {
+		t.Errorf("expected format 'json', got %q", cfg.Recording.Format)
+	}
+	if !cfg.Replay.StrictMode {
+		t.Error("expected strict_mode true")
+	}
+	if cfg.Replay.TimeoutMs != 3000 {
+		t.Errorf("expected timeout_ms 3000, got %d", cfg.Replay.TimeoutMs)
+	}
+}
+
+func TestLoad_Defaults(t *testing.T) {
+	content := `
+service:
+  name: "api"
+  base_url: "http://localhost:8080"
+database:
+  type: "postgres"
+  connection_string: "postgres://localhost/test"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	if cfg.Recording.SnapshotDir != "./snapshots" {
+		t.Errorf("expected default snapshot_dir './snapshots', got %q", cfg.Recording.SnapshotDir)
+	}
+	if cfg.Recording.Format != "json" {
+		t.Errorf("expected default format 'json', got %q", cfg.Recording.Format)
+	}
+	if cfg.Recording.ProxyPort != 8080 {
+		t.Errorf("expected default proxy_port 8080, got %d", cfg.Recording.ProxyPort)
+	}
+	if cfg.Replay.TimeoutMs != 5000 {
+		t.Errorf("expected default timeout_ms 5000, got %d", cfg.Replay.TimeoutMs)
+	}
+}
+
+func TestLoad_InvalidDBType(t *testing.T) {
+	content := `
+service:
+  name: "api"
+  base_url: "http://localhost:8080"
+database:
+  type: "redis"
+  connection_string: "localhost:6379"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for unsupported db type")
+	}
+}
+
+func TestLoad_MissingRequired(t *testing.T) {
+	content := `
+service:
+  name: ""
+  base_url: "http://localhost:8080"
+database:
+  type: "postgres"
+  connection_string: "postgres://localhost/test"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing service name")
+	}
+}
