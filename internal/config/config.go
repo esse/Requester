@@ -30,13 +30,21 @@ type DatabaseConfig struct {
 }
 
 type RecordingConfig struct {
-	ProxyPort         int      `yaml:"proxy_port"`
-	OutgoingProxyPort int      `yaml:"outgoing_proxy_port"` // Port for forward proxy capturing outgoing requests (0 = auto)
-	SnapshotDir       string   `yaml:"snapshot_dir"`
-	Format            string   `yaml:"format"` // json | yaml
-	IgnoreHeaders     []string `yaml:"ignore_headers"`
-	IgnoreFields      []string `yaml:"ignore_fields"`
-	ProxyAuthToken    string   `yaml:"proxy_auth_token"` // If set, require Bearer token for proxy access
+	ProxyPort         int             `yaml:"proxy_port"`
+	OutgoingProxyPort int             `yaml:"outgoing_proxy_port"` // Port for forward proxy capturing outgoing requests (0 = auto)
+	SnapshotDir       string          `yaml:"snapshot_dir"`
+	Format            string          `yaml:"format"` // json | yaml
+	IgnoreHeaders     []string        `yaml:"ignore_headers"`
+	IgnoreFields      []string        `yaml:"ignore_fields"`
+	RedactFields      []string        `yaml:"redact_fields"`       // Fields to redact with [REDACTED] during recording
+	ProxyAuthToken    string          `yaml:"proxy_auth_token"`    // If set, require Bearer token for proxy access
+	RateLimit         RateLimitConfig `yaml:"rate_limit"`
+}
+
+// RateLimitConfig configures rate limiting for the recording proxy.
+type RateLimitConfig struct {
+	RequestsPerSecond float64 `yaml:"requests_per_second"` // Max requests per second (0 = unlimited)
+	MaxConcurrent     int     `yaml:"max_concurrent"`      // Max concurrent requests (0 = unlimited)
 }
 
 type ReplayConfig struct {

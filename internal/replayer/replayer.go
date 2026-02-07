@@ -1,16 +1,15 @@
 package replayer
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
+	"sync"
 	"time"
 
 	"github.com/esse/snapshot-tester/internal/asserter"
 	"github.com/esse/snapshot-tester/internal/config"
 	"github.com/esse/snapshot-tester/internal/db"
+	"github.com/esse/snapshot-tester/internal/httpclient"
 	"github.com/esse/snapshot-tester/internal/mock"
 	"github.com/esse/snapshot-tester/internal/snapshot"
 )
@@ -136,11 +135,26 @@ func (r *Replayer) ReplayOne(snap *snapshot.Snapshot, path string) TestResult {
 }
 
 // ReplayAll replays multiple snapshots and returns all results.
+// If config.Replay.Parallel is true, snapshots are replayed concurrently.
 func (r *Replayer) ReplayAll(snapshots []*snapshot.Snapshot, paths []string) []TestResult {
 	results := make([]TestResult, len(snapshots))
-	for i, snap := range snapshots {
-		results[i] = r.ReplayOne(snap, paths[i])
+
+	if r.config.Replay.Parallel && len(snapshots) > 1 {
+		var wg sync.WaitGroup
+		wg.Add(len(snapshots))
+		for i, snap := range snapshots {
+			go func(idx int, s *snapshot.Snapshot, p string) {
+				defer wg.Done()
+				results[idx] = r.ReplayOne(s, p)
+			}(i, snap, paths[i])
+		}
+		wg.Wait()
+	} else {
+		for i, snap := range snapshots {
+			results[i] = r.ReplayOne(snap, paths[i])
+		}
 	}
+
 	return results
 }
 
@@ -149,63 +163,6 @@ func (r *Replayer) Close() error {
 	return r.snapshotter.Close()
 }
 
-type capturedResponse struct {
-	Status  int
-	Headers map[string]string
-	Body    any
-}
-
-func (r *Replayer) fireRequest(req snapshot.Request) (*capturedResponse, error) {
-	fullURL := r.config.Service.BaseURL + req.URL
-
-	// Decode body using snapshot encoding (handles JSON, text, and binary/RPC payloads)
-	var bodyReader io.Reader
-	if req.Body != nil {
-		data, err := snapshot.DecodeBody(req.Body)
-		if err != nil {
-			return nil, fmt.Errorf("decoding request body: %w", err)
-		}
-		bodyReader = bytes.NewReader(data)
-	}
-
-	httpReq, err := http.NewRequest(req.Method, fullURL, bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-
-	for k, v := range req.Headers {
-		httpReq.Header.Set(k, v)
-	}
-
-	client := &http.Client{
-		Timeout: time.Duration(r.config.Replay.TimeoutMs) * time.Millisecond,
-	}
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("executing request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
-	}
-
-	captured := &capturedResponse{
-		Status:  resp.StatusCode,
-		Headers: make(map[string]string),
-	}
-
-	for k, v := range resp.Header {
-		captured.Headers[k] = v[0]
-	}
-
-	// Parse response body using content-type-aware encoding
-	if len(respBody) > 0 {
-		respContentType := resp.Header.Get("Content-Type")
-		captured.Body = snapshot.ParseBody(respBody, respContentType)
-	}
-
-	return captured, nil
+func (r *Replayer) fireRequest(req snapshot.Request) (*snapshot.Response, error) {
+	return httpclient.FireRequest(r.config.Service.BaseURL, req, r.config.Replay.TimeoutMs)
 }

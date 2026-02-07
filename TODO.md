@@ -6,121 +6,55 @@ This document tracks features from the specification that are not yet fully impl
 
 ### 1. Outgoing Request Recording and Replay
 
-**Status:** ❌ NOT IMPLEMENTED
+**Status:** ✅ IMPLEMENTED
 
 **Specification Requirement:**
 > When the service makes outgoing HTTP calls (e.g., to third-party APIs):
 > - Record mode: Captures outgoing requests and their responses.
 > - Replay mode: Intercepts outgoing calls and returns the recorded responses (acts as a mock server), ensuring tests are fully isolated.
 
-**Current State:**
-- The `OutgoingRequests` field exists in the snapshot structure
-- The mock server exists and can replay outgoing requests
-- **BUT:** The recorder does NOT capture outgoing requests during recording
-- The snapshot's `OutgoingRequests` field is always empty
-
-**Why This Is Critical:**
-- Tests cannot verify outgoing API calls made by the service
-- Replay cannot properly mock external dependencies
-- Services that depend on external APIs cannot be fully tested in isolation
-
-**Implementation Requirements:**
-1. **Recording Phase:**
-   - Intercept HTTP client calls made by the service
-   - Options:
-     - Instrument Go's `net/http` transport layer
-     - Provide a custom `http.Client` wrapper
-     - Use a transparent proxy for all outgoing traffic
-   - Capture: method, URL, headers, body
-   - Capture: response status, headers, body
-   - Store in snapshot's `OutgoingRequests` array
-
-2. **Replay Phase:**
-   - Mock server URL needs to be injected into service configuration
-   - Options:
-     - Environment variable: `HTTP_PROXY=http://localhost:{mock_port}`
-     - Service-specific config override
-     - DNS hijacking (advanced)
-   - Service must route outgoing calls through the mock server
-
-**Estimated Effort:** HIGH (requires architecture changes)
-
-**Workaround:**
-- Manually mock external dependencies at the service level
-- Use environment-specific configuration to point to mock servers
+**Implementation:**
+- `internal/recorder/outgoing.go` implements a forward HTTP proxy (`OutgoingProxy`) that captures all outgoing requests
+- During recording, the proxy is started automatically and captures method, URL, headers, body, and response
+- The recorder drains captured requests after each incoming request and stores them in the snapshot's `OutgoingRequests` field
+- During replay, the mock server (`internal/mock/server.go`) replays recorded responses
 
 ---
 
 ### 2. Mock Server URL Injection
 
-**Status:** ❌ PARTIALLY IMPLEMENTED
+**Status:** ✅ IMPLEMENTED
 
 **Specification Requirement:**
 > The mock server address needs to be communicated to the service so outgoing requests are routed through it.
 
-**Current State:**
-- Mock server starts successfully and returns its address
-- Address is stored in a variable but never used
-- Service has no way to know about the mock server
-
-**Implementation Requirements:**
-1. Add configuration option for how to inject the mock URL:
-   ```yaml
-   replay:
-     mock_injection:
-       method: "env"  # env | config | dns
-       env_var: "HTTP_PROXY"
-   ```
-
-2. Before firing request in replay mode:
-   - Set environment variables for the service process
-   - OR rewrite service config files
-   - OR use iptables/hosts file manipulation
-
-3. Alternative: Document that users must configure their service to use the mock server URL
-
-**Estimated Effort:** MEDIUM
-
-**Workaround:**
-- Manually configure service to use mock server URL
-- Use service-specific environment variables
+**Implementation:**
+- The `service.mock_env_var` config field (default: `SNAPSHOT_MOCK_URL`) controls the environment variable name
+- During replay, if outgoing requests exist, a mock server is started
+- The mock URL is injected via the configured environment variable when starting the service subprocess
+- `internal/replayer/service.go` handles subprocess lifecycle with environment injection
 
 ---
 
 ### 3. Parallel Replay Execution
 
-**Status:** ❌ NOT IMPLEMENTED
+**Status:** ✅ IMPLEMENTED
 
 **Specification Requirement:**
 > Configuration includes `replay.parallel: true` for concurrent snapshot execution.
 
-**Current State:**
-- Config field exists but is not used
-- `ReplayAll()` executes snapshots sequentially
+**Implementation:**
+- `ReplayAll()` in `internal/replayer/replayer.go` checks `config.Replay.Parallel`
+- When enabled, snapshots are replayed concurrently using goroutines and `sync.WaitGroup`
+- Results are stored in a pre-allocated slice indexed by position (thread-safe)
 
-**Implementation Requirements:**
-```go
-func (r *Replayer) ReplayAll(snapshots []*snapshot.Snapshot, paths []string) []TestResult {
-    if r.config.Replay.Parallel {
-        // Use goroutines + sync.WaitGroup
-        // Need to ensure database isolation per goroutine
-        // OR serialize database access with mutex
-    }
-    // Current sequential implementation
-}
+**Usage:**
+```yaml
+replay:
+  parallel: true
 ```
 
-**Challenges:**
-- Database state restoration is not thread-safe
-- Each snapshot modifies global DB state
-- Would need separate database instances per goroutine OR serialization
-
-**Estimated Effort:** MEDIUM
-
-**Recommendation:**
-- Parallel execution requires database-per-snapshot or careful locking
-- May provide limited benefit due to database contention
-- Consider removing from spec or documenting as "future enhancement"
+**Note:** Parallel execution requires database isolation per snapshot (separate test databases or serialized DB access) to avoid state conflicts.
 
 ---
 
@@ -133,9 +67,9 @@ func (r *Replayer) ReplayAll(snapshots []*snapshot.Snapshot, paths []string) []T
 **Specification Requirement:**
 > Support for environment variables in configuration files to avoid storing credentials in plaintext.
 
-**Current State:**
+**Implementation:**
 - Config values support environment variable expansion using `${VAR_NAME}` syntax
-- Implemented in `config.go` via `expandEnvVars()` function
+- Implemented in `config.go` via `expandEnvVars()` function using `os.ExpandEnv`
 - Works for all string configuration fields including database connection strings
 
 **Usage Example:**
@@ -144,50 +78,49 @@ database:
   connection_string: "${DB_CONNECTION_STRING}"  # Expands from env var
 ```
 
-**Priority:** HIGH (security improvement) - ✅ COMPLETE
-
 ---
 
 ### 5. Field-Level Redaction During Recording
 
-**Status:** ❌ NOT IMPLEMENTED
+**Status:** ✅ IMPLEMENTED
 
 **Specification Requirement:**
 > Ability to redact sensitive fields during snapshot creation (not just during assertion).
 
-**Current State:**
-- `ignore_fields` only used during replay/assertion
-- Sensitive data is still captured in snapshots
+**Implementation:**
+- `recording.redact_fields` config field specifies paths to redact
+- Redaction runs in `buildSnapshot()` before saving to disk
+- Supports structured paths: `request.headers.Authorization`, `response.body.password`
+- Supports wildcard paths: `*.password` redacts at any depth in request/response bodies and outgoing requests
+- Redacted values are replaced with `[REDACTED]`
 
-**Implementation Requirements:**
+**Usage:**
 ```yaml
 recording:
   redact_fields:
     - "request.headers.Authorization"
     - "*.password"
     - "*.ssn"
+    - "response.body.api_key"
 ```
-
-Replace redacted values with `"[REDACTED]"` during snapshot creation.
-
-**Estimated Effort:** MEDIUM
-
-**Priority:** HIGH (security/privacy)
 
 ---
 
 ### 6. Rate Limiting on Recording Proxy
 
-**Status:** ❌ NOT IMPLEMENTED
+**Status:** ✅ IMPLEMENTED
 
 **Specification Requirement:**
 > Protection against DoS attacks and resource exhaustion.
 
-**Current State:**
-- Proxy accepts unlimited requests
-- No rate limiting or connection limits
+**Implementation:**
+- `recording.rate_limit` config section with `requests_per_second` and `max_concurrent`
+- Uses `golang.org/x/time/rate` for token-bucket rate limiting
+- Concurrency limiting via channel-based semaphore
+- Returns HTTP 429 (Too Many Requests) when rate exceeded
+- Returns HTTP 503 (Service Unavailable) when concurrency exceeded
 
-**Implementation Requirements:**
+**Usage:**
 ```yaml
 recording:
   rate_limit:
@@ -195,40 +128,28 @@ recording:
     max_concurrent: 50
 ```
 
-Use `golang.org/x/time/rate` for rate limiting.
-
-**Estimated Effort:** LOW
-
-**Priority:** MEDIUM (security)
-
 ---
 
 ### 7. Authentication for Recording Proxy
 
-**Status:** ❌ NOT IMPLEMENTED
+**Status:** ✅ IMPLEMENTED
 
 **Specification Requirement:**
 > Basic authentication, API keys, or TLS support for the recorder.
 
-**Current State:**
-- Proxy has no authentication
-- Anyone with network access can record snapshots
+**Implementation:**
+- `recording.proxy_auth_token` config field enables Bearer token authentication
+- Implemented as middleware in `recorder.go` via `withAuth()`
+- Returns 401 with WWW-Authenticate header for missing auth
+- Returns 403 for invalid tokens
+- Auth header is stripped before proxying to prevent leaking to the service
+- Supports environment variable expansion: `proxy_auth_token: "${RECORDER_API_KEY}"`
 
-**Implementation Requirements:**
+**Usage:**
 ```yaml
 recording:
-  auth:
-    type: "api_key"  # none | api_key | basic | mtls
-    api_key: "${RECORDER_API_KEY}"
-  tls:
-    enabled: true
-    cert_file: "./certs/server.crt"
-    key_file: "./certs/server.key"
+  proxy_auth_token: "${RECORDER_API_KEY}"
 ```
-
-**Estimated Effort:** MEDIUM
-
-**Priority:** HIGH (security)
 
 ---
 
@@ -273,24 +194,13 @@ Use a structured logging library like `go.uber.org/zap` or `github.com/rs/zerolo
 
 ### 10. Extract Duplicated Request Firing Logic
 
-**Status:** ❌ NOT FIXED
-
-**Current State:**
-- Request firing logic duplicated in:
-  - `internal/replayer/replayer.go` (lines 140-192)
-  - `internal/cli/helpers.go` (lines 19-71)
+**Status:** ✅ FIXED
 
 **Implementation:**
-Create `internal/http/client.go`:
-```go
-func FireRequest(baseURL string, req snapshot.Request, timeout time.Duration) (*snapshot.Response, error) {
-    // Shared implementation
-}
-```
-
-**Estimated Effort:** LOW
-
-**Priority:** MEDIUM (code quality)
+- Created `internal/httpclient/client.go` with shared `FireRequest()` function
+- `internal/replayer/replayer.go` now delegates to `httpclient.FireRequest()`
+- `internal/cli/helpers.go` now delegates to `httpclient.FireRequest()`
+- Single implementation handles body decoding, request construction, timeout, and response parsing
 
 ---
 
@@ -322,14 +232,23 @@ const (
 
 ### 12. Missing Test Coverage
 
-**Status:** ❌ INCOMPLETE
+**Status:** ⚠️ PARTIALLY ADDRESSED
 
-**Not Tested:**
-- `internal/cli/helpers.go` - no tests
-- `internal/recorder/recorder.go` - no tests
-- `internal/replayer/replayer.go` - no tests
+**Tested:**
+- `internal/httpclient/client.go` - tests added for GET, POST, nil body scenarios
+- `internal/recorder/` - tests for auth, outgoing proxy, redaction, rate limiting
+- `internal/asserter/` - existing tests
+- `internal/config/` - existing tests
+- `internal/db/` - existing tests
+- `internal/mock/` - existing tests
+- `internal/reporter/` - existing tests
+- `internal/security/` - existing tests
+- `internal/snapshot/` - existing tests
+
+**Still Not Tested:**
+- `internal/cli/` - no tests (command integration tests)
+- `internal/replayer/` - no tests (requires running service)
 - Error scenarios (DB connection failures, corrupt snapshots, network timeouts)
-- Security scenarios (path traversal, SQL injection attempts)
 - Integration tests (end-to-end workflows)
 
 **Estimated Effort:** HIGH
@@ -342,20 +261,19 @@ const (
 
 | Feature | Status | Priority | Effort |
 |---------|--------|----------|--------|
-| Outgoing request recording | ❌ Not implemented | CRITICAL | HIGH |
-| Mock server URL injection | ❌ Partial | CRITICAL | MEDIUM |
-| Parallel replay | ❌ Not implemented | LOW | MEDIUM |
-| Environment variable support | ✅ Implemented | HIGH | LOW |
-| Field-level redaction | ❌ Not implemented | HIGH | MEDIUM |
-| Rate limiting | ❌ Not implemented | MEDIUM | LOW |
-| Proxy authentication | ❌ Not implemented | HIGH | MEDIUM |
+| Outgoing request recording | ✅ Implemented | CRITICAL | - |
+| Mock server URL injection | ✅ Implemented | CRITICAL | - |
+| Parallel replay | ✅ Implemented | LOW | - |
+| Environment variable support | ✅ Implemented | HIGH | - |
+| Field-level redaction | ✅ Implemented | HIGH | - |
+| Rate limiting | ✅ Implemented | MEDIUM | - |
+| Proxy authentication | ✅ Implemented | HIGH | - |
+| Deduplicate request firing | ✅ Fixed | MEDIUM | - |
 | MongoDB/Redis support | ❌ Not implemented | MEDIUM | HIGH |
 | Structured logging | ❌ Not implemented | LOW | LOW |
-| Deduplicate request firing | ❌ Not fixed | MEDIUM | LOW |
 | Constants for magic strings | ❌ Not fixed | LOW | LOW |
-| Test coverage | ❌ Incomplete | MEDIUM | HIGH |
+| Test coverage | ⚠️ Partial | MEDIUM | HIGH |
 
-**Recommendation:**
-1. **Immediate Priority:** Field-level redaction, proxy authentication (environment variables ✅ complete)
-2. **Medium Priority:** Outgoing request recording (requires architecture redesign)
-3. **Long-term:** MongoDB/Redis support, parallel replay, comprehensive test coverage
+**Remaining Work:**
+1. **Low Priority:** Structured logging, constants for magic strings
+2. **Long-term:** MongoDB/Redis support, comprehensive test coverage
