@@ -26,19 +26,26 @@ Snapshots capture complete database state and request/response payloads. This ma
 
 ### 2. Database Credentials in Configuration Files
 
-**Risk Level: HIGH**
+**Risk Level: MEDIUM** ⚠️ Partially mitigated
 
-Configuration files contain database connection strings with credentials in plaintext.
+Configuration files can contain database connection strings with credentials.
 
 **Mitigations:**
+- ✅ **Environment variable support implemented** - Use `${VAR_NAME}` syntax in config files
 - Use environment variables for sensitive configuration values
 - Add config files with credentials to `.gitignore`
 - Use separate test databases with limited privileges
 - Never commit configuration files with production credentials
 - Consider using a secrets management system (e.g., HashiCorp Vault, AWS Secrets Manager)
 
-**Future Enhancement:**
-- Support for environment variable substitution in config files (e.g., `connection_string: ${DB_CONNECTION_STRING}`)
+**Example:**
+```yaml
+database:
+  connection_string: "${DATABASE_URL}"  # Reads from environment variable
+```
+
+**Best Practice:**
+Store credentials in environment variables and reference them in configuration files rather than hardcoding them.
 
 ### 3. Path Traversal Protection
 
@@ -221,7 +228,6 @@ Before using this tool in your environment:
 
 Planned improvements:
 
-- [ ] Environment variable support for configuration
 - [ ] Authentication for recording proxy (API keys, OAuth)
 - [ ] TLS/HTTPS support for recording proxy
 - [ ] Field-level redaction/masking during recording
@@ -230,3 +236,9 @@ Planned improvements:
 - [ ] Rate limiting for recording proxy
 - [ ] Audit logging for snapshot operations
 - [ ] Digital signatures for snapshot integrity verification
+
+**Recently Completed:**
+- [x] Environment variable support for configuration (v1.0.0)
+- [x] Path traversal protection for config and snapshot files (v1.0.0)
+- [x] Improved error handling in base64 decoding (v1.0.0)
+- [x] SQL query parameterization improvements (v1.0.0)

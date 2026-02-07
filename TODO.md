@@ -128,32 +128,23 @@ func (r *Replayer) ReplayAll(snapshots []*snapshot.Snapshot, paths []string) []T
 
 ### 4. Environment Variable Support for Configuration
 
-**Status:** ❌ NOT IMPLEMENTED
+**Status:** ✅ IMPLEMENTED
 
 **Specification Requirement:**
 > Support for environment variables in configuration files to avoid storing credentials in plaintext.
 
 **Current State:**
-- Config values are read directly from YAML
-- No environment variable substitution
+- Config values support environment variable expansion using `${VAR_NAME}` syntax
+- Implemented in `config.go` via `expandEnvVars()` function
+- Works for all string configuration fields including database connection strings
 
-**Implementation Requirements:**
+**Usage Example:**
 ```yaml
 database:
-  connection_string: "${DB_CONNECTION_STRING}"  # Should expand from env var
+  connection_string: "${DB_CONNECTION_STRING}"  # Expands from env var
 ```
 
-Add function to expand environment variables:
-```go
-func expandEnvVars(cfg *Config) {
-    cfg.Database.ConnectionString = os.ExpandEnv(cfg.Database.ConnectionString)
-    // ... expand other fields
-}
-```
-
-**Estimated Effort:** LOW
-
-**Priority:** HIGH (security improvement)
+**Priority:** HIGH (security improvement) - ✅ COMPLETE
 
 ---
 
@@ -354,7 +345,7 @@ const (
 | Outgoing request recording | ❌ Not implemented | CRITICAL | HIGH |
 | Mock server URL injection | ❌ Partial | CRITICAL | MEDIUM |
 | Parallel replay | ❌ Not implemented | LOW | MEDIUM |
-| Environment variable support | ❌ Not implemented | HIGH | LOW |
+| Environment variable support | ✅ Implemented | HIGH | LOW |
 | Field-level redaction | ❌ Not implemented | HIGH | MEDIUM |
 | Rate limiting | ❌ Not implemented | MEDIUM | LOW |
 | Proxy authentication | ❌ Not implemented | HIGH | MEDIUM |
@@ -365,6 +356,6 @@ const (
 | Test coverage | ❌ Incomplete | MEDIUM | HIGH |
 
 **Recommendation:**
-1. **Immediate Priority:** Environment variable support, field-level redaction, proxy authentication
+1. **Immediate Priority:** Field-level redaction, proxy authentication (environment variables ✅ complete)
 2. **Medium Priority:** Outgoing request recording (requires architecture redesign)
 3. **Long-term:** MongoDB/Redis support, parallel replay, comprehensive test coverage

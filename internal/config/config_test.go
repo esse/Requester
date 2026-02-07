@@ -165,7 +165,8 @@ database:
 `
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	// Use 0o600 to restrict access to owner-only (security best practice for files with credentials)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

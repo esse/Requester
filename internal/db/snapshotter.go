@@ -135,10 +135,13 @@ func (b *baseSnapshotter) SnapshotTable(table string) ([]map[string]any, error) 
 	return result, rows.Err()
 }
 
+// RestoreTable truncates a table and inserts the given rows.
+// Security: This function uses parameterized queries for all data values to prevent SQL injection.
+// Table and column names are quoted using quoteIdentifier() to handle special characters safely.
 func (b *baseSnapshotter) RestoreTable(table string, rows []map[string]any) error {
 	quotedTable := b.quoteIdentifier(table)
 
-	// Truncate
+	// Truncate (using DELETE instead of TRUNCATE for better compatibility)
 	if _, err := b.db.Exec("DELETE FROM " + quotedTable); err != nil {
 		return fmt.Errorf("truncating table %s: %w", table, err)
 	}
@@ -160,6 +163,7 @@ func (b *baseSnapshotter) RestoreTable(table string, rows []map[string]any) erro
 			i++
 		}
 
+		// Use parameterized query for values (SQL injection safe)
 		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 			quotedTable,
 			strings.Join(columns, ", "),
@@ -203,6 +207,17 @@ func (b *baseSnapshotter) queryStrings(query string) ([]string, error) {
 	return result, rows.Err()
 }
 
+// quoteIdentifier properly quotes database identifiers (table/column names) to prevent SQL injection.
+// Different databases use different quoting mechanisms:
+//   - MySQL: backticks `table_name`
+//   - PostgreSQL/SQLite: double quotes "table_name"
+//
+// Security: This function is critical for SQL injection prevention when identifiers come from
+// user input (e.g., configured table names). The function escapes quote characters by doubling them,
+// which is the standard SQL escaping mechanism.
+//
+// Note: While this provides basic protection, table/column names should ideally come from
+// trusted configuration only, not directly from user input.
 func (b *baseSnapshotter) quoteIdentifier(name string) string {
 	switch b.dbType {
 	case "mysql":
