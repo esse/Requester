@@ -46,6 +46,7 @@ type TestDatabaseConfig struct {
 }
 
 // Load reads and parses a YAML configuration file.
+// Environment variables in the form ${VAR_NAME} are expanded.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -56,6 +57,9 @@ func Load(path string) (*Config, error) {
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parsing config file: %w", err)
 	}
+
+	// Expand environment variables in configuration
+	cfg.expandEnvVars()
 
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
@@ -76,6 +80,16 @@ func Load(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// expandEnvVars expands environment variables in configuration values.
+// Supports ${VAR_NAME} and $VAR_NAME syntax.
+func (c *Config) expandEnvVars() {
+	c.Service.Name = os.ExpandEnv(c.Service.Name)
+	c.Service.BaseURL = os.ExpandEnv(c.Service.BaseURL)
+	c.Database.ConnectionString = os.ExpandEnv(c.Database.ConnectionString)
+	c.Recording.SnapshotDir = os.ExpandEnv(c.Recording.SnapshotDir)
+	c.Replay.TestDatabase.ConnectionString = os.ExpandEnv(c.Replay.TestDatabase.ConnectionString)
 }
 
 func (c *Config) validate() error {

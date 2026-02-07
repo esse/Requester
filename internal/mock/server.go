@@ -79,7 +79,13 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Read body
 	var body any
 	if r.Body != nil {
-		data, _ := io.ReadAll(r.Body)
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("MOCK: Failed to read request body: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error": "failed to read request body"}`))
+			return
+		}
 		if len(data) > 0 {
 			if err := json.Unmarshal(data, &body); err != nil {
 				body = string(data)
@@ -122,7 +128,12 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(exp.Response.Status)
 		if exp.Response.Body != nil {
-			data, _ := json.Marshal(exp.Response.Body)
+			data, err := json.Marshal(exp.Response.Body)
+			if err != nil {
+				log.Printf("MOCK: Failed to marshal response body: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
 			w.Write(data)
 		}
 	} else {

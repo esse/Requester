@@ -69,7 +69,12 @@ func (b *baseSnapshotter) RestoreAll(state map[string][]map[string]any) error {
 	if err := b.disableFKChecks(); err != nil {
 		return fmt.Errorf("disabling FK checks: %w", err)
 	}
-	defer b.enableFKChecks()
+	defer func() {
+		if err := b.enableFKChecks(); err != nil {
+			// Log the error but don't return it since we're in defer
+			fmt.Printf("Warning: Failed to re-enable FK checks: %v\n", err)
+		}
+	}()
 
 	for table, rows := range state {
 		if err := b.RestoreTable(table, rows); err != nil {
@@ -130,10 +135,13 @@ func (b *baseSnapshotter) SnapshotTable(table string) ([]map[string]any, error) 
 	return result, rows.Err()
 }
 
+// RestoreTable truncates a table and inserts the given rows.
+// Security: This function uses parameterized queries for all data values to prevent SQL injection.
+// Table and column names are quoted using quoteIdentifier() to handle special characters safely.
 func (b *baseSnapshotter) RestoreTable(table string, rows []map[string]any) error {
 	quotedTable := b.quoteIdentifier(table)
 
-	// Truncate
+	// Truncate (using DELETE instead of TRUNCATE for better compatibility)
 	if _, err := b.db.Exec("DELETE FROM " + quotedTable); err != nil {
 		return fmt.Errorf("truncating table %s: %w", table, err)
 	}
@@ -155,6 +163,7 @@ func (b *baseSnapshotter) RestoreTable(table string, rows []map[string]any) erro
 			i++
 		}
 
+		// Use parameterized query for values (SQL injection safe)
 		query := fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)",
 			quotedTable,
 			strings.Join(columns, ", "),
@@ -198,6 +207,17 @@ func (b *baseSnapshotter) queryStrings(query string) ([]string, error) {
 	return result, rows.Err()
 }
 
+// quoteIdentifier properly quotes database identifiers (table/column names) to prevent SQL injection.
+// Different databases use different quoting mechanisms:
+//   - MySQL: backticks `table_name`
+//   - PostgreSQL/SQLite: double quotes "table_name"
+//
+// Security: This function is critical for SQL injection prevention when identifiers come from
+// user input (e.g., configured table names). The function escapes quote characters by doubling them,
+// which is the standard SQL escaping mechanism.
+//
+// Note: While this provides basic protection, table/column names should ideally come from
+// trusted configuration only, not directly from user input.
 func (b *baseSnapshotter) quoteIdentifier(name string) string {
 	switch b.dbType {
 	case "mysql":
@@ -231,13 +251,15 @@ func (b *baseSnapshotter) disableFKChecks() error {
 	return nil
 }
 
-func (b *baseSnapshotter) enableFKChecks() {
+func (b *baseSnapshotter) enableFKChecks() error {
+	var err error
 	switch b.dbType {
 	case "postgres":
-		b.db.Exec("SET session_replication_role = 'origin'")
+		_, err = b.db.Exec("SET session_replication_role = 'origin'")
 	case "mysql":
-		b.db.Exec("SET FOREIGN_KEY_CHECKS = 1")
+		_, err = b.db.Exec("SET FOREIGN_KEY_CHECKS = 1")
 	case "sqlite":
-		b.db.Exec("PRAGMA foreign_keys = ON")
+		_, err = b.db.Exec("PRAGMA foreign_keys = ON")
 	}
+	return err
 }

@@ -1,0 +1,55 @@
+# Binaries
+snapshot-tester
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+*.out
+
+# Go workspace file
+go.work
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Snapshots (may contain sensitive data - review before committing)
+snapshots/
+*.snapshot.json
+*.snapshot.yaml
+
+# Configuration files with credentials (DO NOT COMMIT)
+# Add specific config files here if they contain secrets
+# snapshot-tester.yml
+# *.local.yml
+
+# Test databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+/tmp/
+*.tmp
+*.log
+
+# Build artifacts
+/dist/
+/build/
+/bin/
+
+# Coverage reports
+coverage.out
+coverage.html
+*.coverprofile

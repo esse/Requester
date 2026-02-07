@@ -143,3 +143,40 @@ database:
 		t.Fatal("expected error for missing service name")
 	}
 }
+
+func TestLoad_EnvironmentVariables(t *testing.T) {
+	// Set test environment variables
+	os.Setenv("TEST_DB_USER", "testuser")
+	os.Setenv("TEST_DB_PASS", "testpass")
+	os.Setenv("TEST_DB_NAME", "testdb")
+	defer func() {
+		os.Unsetenv("TEST_DB_USER")
+		os.Unsetenv("TEST_DB_PASS")
+		os.Unsetenv("TEST_DB_NAME")
+	}()
+
+	content := `
+service:
+  name: "test-api"
+  base_url: "http://localhost:3000"
+database:
+  type: "postgres"
+  connection_string: "postgres://${TEST_DB_USER}:${TEST_DB_PASS}@localhost:5432/${TEST_DB_NAME}"
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	// Use 0o600 to restrict access to owner-only (security best practice for files with credentials)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+
+	expected := "postgres://testuser:testpass@localhost:5432/testdb"
+	if cfg.Database.ConnectionString != expected {
+		t.Errorf("expected connection string %q, got %q", expected, cfg.Database.ConnectionString)
+	}
+}
