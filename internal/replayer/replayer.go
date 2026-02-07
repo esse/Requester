@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -65,6 +66,7 @@ func (r *Replayer) ReplayOne(snap *snapshot.Snapshot, path string) TestResult {
 
 	// 2. Start mock server if there are outgoing requests
 	var mockServer *mock.Server
+	var svc *managedService
 	if len(snap.OutgoingRequests) > 0 {
 		mockServer = mock.NewServer(snap.OutgoingRequests)
 		addr, err := mockServer.Start()
@@ -74,7 +76,23 @@ func (r *Replayer) ReplayOne(snap *snapshot.Snapshot, path string) TestResult {
 			return result
 		}
 		defer mockServer.Stop()
-		_ = addr // Mock server address available for service configuration
+
+		mockURL := fmt.Sprintf("http://%s", addr)
+		envVar := r.config.Service.MockEnvVar
+		log.Printf("Mock server at %s (injecting as %s=%s)", mockURL, envVar, mockURL)
+
+		// If a service command is configured, start the service with the mock URL injected
+		if r.config.Service.Command != "" {
+			svc, err = startService(r.config, []string{
+				fmt.Sprintf("%s=%s", envVar, mockURL),
+			})
+			if err != nil {
+				result.Error = fmt.Sprintf("Failed to start service: %v", err)
+				result.Duration = time.Since(start)
+				return result
+			}
+			defer svc.Stop()
+		}
 	}
 
 	// 3. Fire the request

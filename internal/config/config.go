@@ -16,8 +16,11 @@ type Config struct {
 }
 
 type ServiceConfig struct {
-	Name    string `yaml:"name"`
-	BaseURL string `yaml:"base_url"`
+	Name          string `yaml:"name"`
+	BaseURL       string `yaml:"base_url"`
+	Command       string `yaml:"command"`         // Optional: command to start service as subprocess
+	StartupTimeMs int    `yaml:"startup_time_ms"` // Time to wait after starting service (default: 2000)
+	MockEnvVar    string `yaml:"mock_env_var"`    // Env var name to inject mock server URL (default: SNAPSHOT_MOCK_URL)
 }
 
 type DatabaseConfig struct {
@@ -27,11 +30,13 @@ type DatabaseConfig struct {
 }
 
 type RecordingConfig struct {
-	ProxyPort     int      `yaml:"proxy_port"`
-	SnapshotDir   string   `yaml:"snapshot_dir"`
-	Format        string   `yaml:"format"` // json | yaml
-	IgnoreHeaders []string `yaml:"ignore_headers"`
-	IgnoreFields  []string `yaml:"ignore_fields"`
+	ProxyPort         int      `yaml:"proxy_port"`
+	OutgoingProxyPort int      `yaml:"outgoing_proxy_port"` // Port for forward proxy capturing outgoing requests (0 = auto)
+	SnapshotDir       string   `yaml:"snapshot_dir"`
+	Format            string   `yaml:"format"` // json | yaml
+	IgnoreHeaders     []string `yaml:"ignore_headers"`
+	IgnoreFields      []string `yaml:"ignore_fields"`
+	ProxyAuthToken    string   `yaml:"proxy_auth_token"` // If set, require Bearer token for proxy access
 }
 
 type ReplayConfig struct {
@@ -78,6 +83,12 @@ func Load(path string) (*Config, error) {
 	if cfg.Replay.TimeoutMs == 0 {
 		cfg.Replay.TimeoutMs = 5000
 	}
+	if cfg.Service.MockEnvVar == "" {
+		cfg.Service.MockEnvVar = "SNAPSHOT_MOCK_URL"
+	}
+	if cfg.Service.StartupTimeMs == 0 {
+		cfg.Service.StartupTimeMs = 2000
+	}
 
 	return cfg, nil
 }
@@ -87,8 +98,11 @@ func Load(path string) (*Config, error) {
 func (c *Config) expandEnvVars() {
 	c.Service.Name = os.ExpandEnv(c.Service.Name)
 	c.Service.BaseURL = os.ExpandEnv(c.Service.BaseURL)
+	c.Service.Command = os.ExpandEnv(c.Service.Command)
+	c.Service.MockEnvVar = os.ExpandEnv(c.Service.MockEnvVar)
 	c.Database.ConnectionString = os.ExpandEnv(c.Database.ConnectionString)
 	c.Recording.SnapshotDir = os.ExpandEnv(c.Recording.SnapshotDir)
+	c.Recording.ProxyAuthToken = os.ExpandEnv(c.Recording.ProxyAuthToken)
 	c.Replay.TestDatabase.ConnectionString = os.ExpandEnv(c.Replay.TestDatabase.ConnectionString)
 }
 

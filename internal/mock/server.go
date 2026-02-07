@@ -65,6 +65,14 @@ func (s *Server) Stop() {
 	}
 }
 
+// Addr returns the address the mock server is listening on, or empty if not started.
+func (s *Server) Addr() string {
+	if s.listener == nil {
+		return ""
+	}
+	return s.listener.Addr().String()
+}
+
 // Calls returns all calls that were made to the mock server.
 func (s *Server) Calls() []RecordedCall {
 	s.mu.Lock()
@@ -99,12 +107,19 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		headers[k] = strings.Join(v, ", ")
 	}
 
-	// Look up expectation
-	// Try full URL first, then just path
+	// Look up expectation using multiple matching strategies:
+	// 1. Exact match on method + full URL
+	// 2. Match on method + path only (supports forward proxy-style requests with absolute URLs)
+	// 3. Match on method + path suffix (for partial path matching)
 	key := requestKey(r.Method, r.URL.String())
 	exp, ok := s.expectations[key]
 	if !ok {
-		// Try matching by method + path only
+		// Try matching by method + path
+		pathKey := requestKey(r.Method, r.URL.Path)
+		exp, ok = s.expectations[pathKey]
+	}
+	if !ok {
+		// Try matching by method + path suffix
 		for eKey, eVal := range s.expectations {
 			if strings.HasPrefix(eKey, r.Method+":") && strings.HasSuffix(eKey, r.URL.Path) {
 				exp = eVal
