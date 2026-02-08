@@ -37,7 +37,7 @@ func setupTestDB(t *testing.T) string {
 func TestSQLiteSnapshotter_Tables(t *testing.T) {
 	dbPath := setupTestDB(t)
 
-	snap, err := NewSnapshotter("sqlite", dbPath, nil)
+	snap, err := NewSnapshotter("sqlite", dbPath, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestSQLiteSnapshotter_Tables(t *testing.T) {
 func TestSQLiteSnapshotter_ConfiguredTables(t *testing.T) {
 	dbPath := setupTestDB(t)
 
-	snap, err := NewSnapshotter("sqlite", dbPath, []string{"users"})
+	snap, err := NewSnapshotter("sqlite", dbPath, []string{"users"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestSQLiteSnapshotter_ConfiguredTables(t *testing.T) {
 func TestSQLiteSnapshotter_SnapshotTable(t *testing.T) {
 	dbPath := setupTestDB(t)
 
-	snap, err := NewSnapshotter("sqlite", dbPath, nil)
+	snap, err := NewSnapshotter("sqlite", dbPath, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestSQLiteSnapshotter_SnapshotTable(t *testing.T) {
 func TestSQLiteSnapshotter_SnapshotAll(t *testing.T) {
 	dbPath := setupTestDB(t)
 
-	snap, err := NewSnapshotter("sqlite", dbPath, []string{"users", "orders"})
+	snap, err := NewSnapshotter("sqlite", dbPath, []string{"users", "orders"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestSQLiteSnapshotter_SnapshotAll(t *testing.T) {
 func TestSQLiteSnapshotter_RestoreAll(t *testing.T) {
 	dbPath := setupTestDB(t)
 
-	snap, err := NewSnapshotter("sqlite", dbPath, []string{"users", "orders"})
+	snap, err := NewSnapshotter("sqlite", dbPath, []string{"users", "orders"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestSQLiteSnapshotter_EmptyTable(t *testing.T) {
 	db.Exec("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT)")
 	db.Close()
 
-	snap, err := NewSnapshotter("sqlite", dbPath, []string{"items"})
+	snap, err := NewSnapshotter("sqlite", dbPath, []string{"items"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestSQLiteSnapshotter_EmptyTable(t *testing.T) {
 
 func TestSQLiteSnapshotter_InvalidPath(t *testing.T) {
 	// A non-existent deep path should fail on ping
-	_, err := NewSnapshotter("sqlite", "/nonexistent/deep/path/db.sqlite", nil)
+	_, err := NewSnapshotter("sqlite", "/nonexistent/deep/path/db.sqlite", nil, nil)
 	if err != nil {
 		// Expected - some systems may not fail until first query
 		// This is OK either way
@@ -204,9 +204,53 @@ func TestSQLiteSnapshotter_InvalidPath(t *testing.T) {
 }
 
 func TestUnsupportedDBType(t *testing.T) {
-	_, err := NewSnapshotter("redis", "localhost:6379", nil)
+	_, err := NewSnapshotter("redis", "localhost:6379", nil, nil)
 	if err == nil {
 		t.Fatal("expected error for unsupported db type")
+	}
+}
+
+func TestQuoteIdentifier_Simple(t *testing.T) {
+	pg := &baseSnapshotter{dbType: DBTypePostgres}
+	mysql := &baseSnapshotter{dbType: DBTypeMySQL}
+
+	if got := pg.quoteIdentifier("users"); got != `"users"` {
+		t.Errorf("postgres simple: expected %q, got %q", `"users"`, got)
+	}
+	if got := mysql.quoteIdentifier("users"); got != "`users`" {
+		t.Errorf("mysql simple: expected %q, got %q", "`users`", got)
+	}
+}
+
+func TestQuoteIdentifier_SchemaQualified(t *testing.T) {
+	pg := &baseSnapshotter{dbType: DBTypePostgres}
+	mysql := &baseSnapshotter{dbType: DBTypeMySQL}
+
+	if got := pg.quoteIdentifier("myschema.users"); got != `"myschema"."users"` {
+		t.Errorf("postgres schema-qualified: expected %q, got %q", `"myschema"."users"`, got)
+	}
+	if got := mysql.quoteIdentifier("mydb.users"); got != "`mydb`.`users`" {
+		t.Errorf("mysql schema-qualified: expected %q, got %q", "`mydb`.`users`", got)
+	}
+}
+
+func TestNamespacesStoredInSnapshotter(t *testing.T) {
+	dbPath := setupTestDB(t)
+
+	// SQLite ignores namespaces, but they should be stored without error
+	snap, err := NewSnapshotter("sqlite", dbPath, nil, []string{"main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer snap.Close()
+
+	tables, err := snap.Tables()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(tables) < 2 {
+		t.Errorf("expected at least 2 tables, got %d", len(tables))
 	}
 }
 

@@ -6,7 +6,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
-func newMySQLSnapshotter(connString string, tables []string) (Snapshotter, error) {
+func newMySQLSnapshotter(connString string, tables, namespaces []string) (Snapshotter, error) {
 	db, err := sql.Open(DriverMySQL, connString)
 	if err != nil {
 		return nil, err
@@ -18,6 +18,7 @@ func newMySQLSnapshotter(connString string, tables []string) (Snapshotter, error
 	return &baseSnapshotter{
 		db:               db,
 		configuredTables: tables,
+		namespaces:       namespaces,
 		dbType:           DBTypeMySQL,
 	}, nil
 }

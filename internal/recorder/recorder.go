@@ -30,7 +30,7 @@ type Recorder struct {
 
 // New creates a new Recorder.
 func New(cfg *config.Config, tags []string) (*Recorder, error) {
-	snapshotter, err := db.NewSnapshotter(cfg.Database.Type, cfg.Database.ConnectionString, cfg.Database.Tables)
+	snapshotter, err := db.NewSnapshotter(cfg.Database.Type, cfg.Database.ConnectionString, cfg.Database.Tables, cfg.Database.Namespaces)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to database: %w", err)
 	}

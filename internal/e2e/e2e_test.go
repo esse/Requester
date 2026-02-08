@@ -656,7 +656,7 @@ func TestE2E_MockServerIntegration(t *testing.T) {
 func TestE2E_DBSnapshotterRealSQLite(t *testing.T) {
 	dbPath := setupSQLiteDB(t)
 
-	snapshotter, err := db.NewSnapshotter("sqlite", dbPath, []string{"users"})
+	snapshotter, err := db.NewSnapshotter("sqlite", dbPath, []string{"users"}, nil)
 	if err != nil {
 		t.Fatalf("creating snapshotter: %v", err)
 	}
@@ -785,7 +785,7 @@ func TestE2E_YAMLFormat(t *testing.T) {
 func createReplayer(t *testing.T, cfg *config.Config, dbPath string) *replayer.Replayer {
 	t.Helper()
 
-	snapshotter, err := db.NewSnapshotter("sqlite", dbPath, cfg.Database.Tables)
+	snapshotter, err := db.NewSnapshotter("sqlite", dbPath, cfg.Database.Tables, nil)
 	if err != nil {
 		t.Fatalf("creating snapshotter for replayer: %v", err)
 	}
