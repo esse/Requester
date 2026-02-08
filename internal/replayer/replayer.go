@@ -37,7 +37,7 @@ func New(cfg *config.Config) (*Replayer, error) {
 		connStr = cfg.Replay.TestDatabase.ConnectionString
 	}
 
-	snapshotter, err := db.NewSnapshotter(cfg.Database.Type, connStr, cfg.Database.Tables)
+	snapshotter, err := db.NewSnapshotter(cfg.Database.Type, connStr, cfg.Database.Tables, cfg.Database.Namespaces)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to test database: %w", err)
 	}

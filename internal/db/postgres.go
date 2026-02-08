@@ -6,7 +6,7 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func newPostgresSnapshotter(connString string, tables []string) (Snapshotter, error) {
+func newPostgresSnapshotter(connString string, tables, namespaces []string) (Snapshotter, error) {
 	db, err := sql.Open(DriverPostgres, connString)
 	if err != nil {
 		return nil, err
@@ -18,6 +18,7 @@ func newPostgresSnapshotter(connString string, tables []string) (Snapshotter, er
 	return &baseSnapshotter{
 		db:               db,
 		configuredTables: tables,
+		namespaces:       namespaces,
 		dbType:           DBTypePostgres,
 	}, nil
 }

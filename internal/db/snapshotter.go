@@ -24,12 +24,14 @@ type Snapshotter interface {
 }
 
 // NewSnapshotter creates a Snapshotter for the given database type.
-func NewSnapshotter(dbType, connString string, tables []string) (Snapshotter, error) {
+// The namespaces parameter specifies which schemas (postgres) or databases (mysql) to scan.
+// If empty, defaults to "public" for postgres or the current database for mysql.
+func NewSnapshotter(dbType, connString string, tables, namespaces []string) (Snapshotter, error) {
 	switch dbType {
 	case DBTypePostgres:
-		return newPostgresSnapshotter(connString, tables)
+		return newPostgresSnapshotter(connString, tables, namespaces)
 	case DBTypeMySQL:
-		return newMySQLSnapshotter(connString, tables)
+		return newMySQLSnapshotter(connString, tables, namespaces)
 	case DBTypeSQLite:
 		return newSQLiteSnapshotter(connString, tables)
 	default:
@@ -39,9 +41,10 @@ func NewSnapshotter(dbType, connString string, tables []string) (Snapshotter, er
 
 // baseSnapshotter provides shared logic for SQL-based snapshotters.
 type baseSnapshotter struct {
-	db             *sql.DB
+	db               *sql.DB
 	configuredTables []string
-	dbType         string
+	namespaces       []string // schemas (postgres) or databases (mysql) to scan
+	dbType           string
 }
 
 func (b *baseSnapshotter) Close() error {
@@ -179,14 +182,96 @@ func (b *baseSnapshotter) RestoreTable(table string, rows []map[string]any) erro
 func (b *baseSnapshotter) discoverTables() ([]string, error) {
 	switch b.dbType {
 	case DBTypePostgres:
-		return b.queryStrings(PostgresDiscoverTablesQuery)
+		return b.discoverPostgresTables()
 	case DBTypeMySQL:
-		return b.queryStrings(MySQLDiscoverTablesQuery)
+		return b.discoverMySQLTables()
 	case DBTypeSQLite:
 		return b.queryStrings(SQLiteDiscoverTablesQuery)
 	default:
 		return nil, fmt.Errorf("unsupported db type for discovery: %s", b.dbType)
 	}
+}
+
+// discoverPostgresTables discovers tables in the configured schemas.
+// When scanning multiple schemas or non-public schemas, table names are schema-qualified (schema.table).
+// When scanning only the public schema, table names are unqualified for backward compatibility.
+func (b *baseSnapshotter) discoverPostgresTables() ([]string, error) {
+	namespaces := b.namespaces
+	if len(namespaces) == 0 {
+		namespaces = []string{"public"}
+	}
+
+	// Single "public" schema: return unqualified names for backward compatibility
+	if len(namespaces) == 1 && namespaces[0] == "public" {
+		return b.queryStrings(PostgresDiscoverTablesQuery)
+	}
+
+	// Multiple or non-public schemas: return schema-qualified names
+	placeholders := make([]string, len(namespaces))
+	args := make([]any, len(namespaces))
+	for i, ns := range namespaces {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = ns
+	}
+
+	query := fmt.Sprintf(
+		"SELECT schemaname || '.' || tablename FROM pg_tables WHERE schemaname IN (%s) ORDER BY schemaname, tablename",
+		strings.Join(placeholders, ", "),
+	)
+
+	rows, err := b.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		result = append(result, s)
+	}
+	return result, rows.Err()
+}
+
+// discoverMySQLTables discovers tables in the configured databases.
+// When scanning multiple databases, table names are database-qualified (database.table).
+// When no namespaces are configured, uses SHOW TABLES for the current database.
+func (b *baseSnapshotter) discoverMySQLTables() ([]string, error) {
+	if len(b.namespaces) == 0 {
+		return b.queryStrings(MySQLDiscoverTablesQuery)
+	}
+
+	// Build parameterized query for specific databases
+	placeholders := make([]string, len(b.namespaces))
+	args := make([]any, len(b.namespaces))
+	for i, ns := range b.namespaces {
+		placeholders[i] = "?"
+		args[i] = ns
+	}
+
+	query := fmt.Sprintf(
+		"SELECT CONCAT(TABLE_SCHEMA, '.', TABLE_NAME) FROM information_schema.tables WHERE TABLE_SCHEMA IN (%s) AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME",
+		strings.Join(placeholders, ", "),
+	)
+
+	rows, err := b.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		result = append(result, s)
+	}
+	return result, rows.Err()
 }
 
 func (b *baseSnapshotter) queryStrings(query string) ([]string, error) {
@@ -212,6 +297,9 @@ func (b *baseSnapshotter) queryStrings(query string) ([]string, error) {
 //   - MySQL: backticks `table_name`
 //   - PostgreSQL/SQLite: double quotes "table_name"
 //
+// Supports schema-qualified names (e.g., "myschema.mytable") by splitting on "." and quoting
+// each part separately: "myschema"."mytable" or `myschema`.`mytable`.
+//
 // Security: This function is critical for SQL injection prevention when identifiers come from
 // user input (e.g., configured table names). The function escapes quote characters by doubling them,
 // which is the standard SQL escaping mechanism.
@@ -219,6 +307,15 @@ func (b *baseSnapshotter) queryStrings(query string) ([]string, error) {
 // Note: While this provides basic protection, table/column names should ideally come from
 // trusted configuration only, not directly from user input.
 func (b *baseSnapshotter) quoteIdentifier(name string) string {
+	parts := strings.Split(name, ".")
+	quoted := make([]string, len(parts))
+	for i, part := range parts {
+		quoted[i] = b.quoteSingleIdentifier(part)
+	}
+	return strings.Join(quoted, ".")
+}
+
+func (b *baseSnapshotter) quoteSingleIdentifier(name string) string {
 	switch b.dbType {
 	case DBTypeMySQL:
 		return "`" + strings.ReplaceAll(name, "`", "``") + "`"

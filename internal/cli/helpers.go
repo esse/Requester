@@ -8,7 +8,7 @@ import (
 )
 
 func newSnapshotterForUpdate(cfg *config.Config, connStr string) (dbpkg.Snapshotter, error) {
-	return dbpkg.NewSnapshotter(cfg.Database.Type, connStr, cfg.Database.Tables)
+	return dbpkg.NewSnapshotter(cfg.Database.Type, connStr, cfg.Database.Tables, cfg.Database.Namespaces)
 }
 
 func fireRequestForUpdate(cfg *config.Config, req snapshot.Request) (*snapshot.Response, error) {

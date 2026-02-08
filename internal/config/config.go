@@ -50,6 +50,7 @@ type DatabaseConfig struct {
 	Type             string   `yaml:"type"` // postgres | mysql | sqlite
 	ConnectionString string   `yaml:"connection_string"`
 	Tables           []string `yaml:"tables"`
+	Namespaces       []string `yaml:"namespaces"` // Schemas (postgres) or databases (mysql) to scan; defaults to public/current
 }
 
 type RecordingConfig struct {
