@@ -72,10 +72,13 @@ type RateLimitConfig struct {
 }
 
 type ReplayConfig struct {
-	TestDatabase TestDatabaseConfig `yaml:"test_database"`
-	StrictMode   bool               `yaml:"strict_mode"`
-	TimeoutMs    int                `yaml:"timeout_ms"`
-	Parallel     bool               `yaml:"parallel"`
+	TestDatabase     TestDatabaseConfig `yaml:"test_database"`
+	StrictMode       bool               `yaml:"strict_mode"`
+	TimeoutMs        int                `yaml:"timeout_ms"`
+	Parallel         bool               `yaml:"parallel"`
+	OrderInsensitive []string           `yaml:"order_insensitive"`
+	IgnoreFields     []string           `yaml:"ignore_fields"`
+	IgnoreTables     []string           `yaml:"ignore_tables"`
 }
 
 type TestDatabaseConfig struct {
@@ -136,6 +139,42 @@ func (c *Config) expandEnvVars() {
 	c.Recording.SnapshotDir = os.ExpandEnv(c.Recording.SnapshotDir)
 	c.Recording.ProxyAuthToken = os.ExpandEnv(c.Recording.ProxyAuthToken)
 	c.Replay.TestDatabase.ConnectionString = os.ExpandEnv(c.Replay.TestDatabase.ConnectionString)
+}
+
+// LoadForProxy reads a config file with relaxed validation suitable for proxy-only mode.
+// Database configuration is not required.
+func LoadForProxy(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading config file: %w", err)
+	}
+
+	cfg := &Config{}
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
+
+	cfg.expandEnvVars()
+
+	if err := cfg.validateProxy(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	if cfg.Recording.ProxyPort == 0 {
+		cfg.Recording.ProxyPort = defaultProxyPort
+	}
+
+	return cfg, nil
+}
+
+func (c *Config) validateProxy() error {
+	if c.Service.Name == "" {
+		return fmt.Errorf("service.name is required")
+	}
+	if c.Service.BaseURL == "" {
+		return fmt.Errorf("service.base_url is required")
+	}
+	return nil
 }
 
 func (c *Config) validate() error {

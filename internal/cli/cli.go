@@ -2,6 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
 
@@ -39,6 +43,7 @@ verify that your service behaves consistently over time.`,
 		newListCmd(),
 		newDiffCmd(),
 		newUpdateCmd(),
+		newProxyCmd(),
 	)
 
 	if err := root.Execute(); err != nil {
@@ -398,6 +403,41 @@ func newUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&configPath, "config", "c", "snapshot-tester.yml", "Path to config file")
 	cmd.Flags().StringVarP(&snapshotPath, "snapshot", "s", "", "Path to snapshot file")
 	cmd.MarkFlagRequired("snapshot")
+
+	return cmd
+}
+
+func newProxyCmd() *cobra.Command {
+	var configPath string
+
+	cmd := &cobra.Command{
+		Use:   "proxy",
+		Short: "Start a passthrough proxy without recording snapshots",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := security.ValidateConfigPath(configPath); err != nil {
+				return fmt.Errorf("invalid config path: %w", err)
+			}
+
+			cfg, err := config.LoadForProxy(configPath)
+			if err != nil {
+				return fmt.Errorf("loading config: %w", err)
+			}
+
+			target, err := url.Parse(cfg.Service.BaseURL)
+			if err != nil {
+				return fmt.Errorf("parsing service base URL: %w", err)
+			}
+
+			proxy := httputil.NewSingleHostReverseProxy(target)
+
+			addr := fmt.Sprintf(":%d", cfg.Recording.ProxyPort)
+			slog.Info("passthrough proxy started", "addr", addr, "target", cfg.Service.BaseURL)
+
+			return http.ListenAndServe(addr, proxy)
+		},
+	}
+
+	cmd.Flags().StringVarP(&configPath, "config", "c", "snapshot-tester.yml", "Path to config file")
 
 	return cmd
 }
