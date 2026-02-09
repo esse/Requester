@@ -111,8 +111,23 @@ func (r *Replayer) ReplayOne(snap *snapshot.Snapshot, path string) TestResult {
 	}
 
 	// 5. Compare response
+	orderInsensitive := make(map[string]bool)
+	for _, table := range r.config.Replay.OrderInsensitive {
+		orderInsensitive[table] = true
+	}
+
+	ignoreTables := make(map[string]bool)
+	for _, table := range r.config.Replay.IgnoreTables {
+		ignoreTables[table] = true
+	}
+
+	// Merge ignore_fields from recording and replay configs
+	ignoreFields := append(r.config.Recording.IgnoreFields, r.config.Replay.IgnoreFields...)
+
 	opts := &asserter.Options{
-		IgnoreFields: r.config.Recording.IgnoreFields,
+		IgnoreFields:     ignoreFields,
+		OrderInsensitive: orderInsensitive,
+		IgnoreTables:     ignoreTables,
 	}
 
 	expectedResp := map[string]any{

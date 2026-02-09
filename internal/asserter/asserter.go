@@ -25,8 +25,9 @@ type Diff struct {
 
 // Options configures assertion behavior.
 type Options struct {
-	IgnoreFields    []string
+	IgnoreFields     []string
 	OrderInsensitive map[string]bool // table/field paths where array order doesn't matter
+	IgnoreTables     map[string]bool // tables to skip during DB comparison
 }
 
 // AssertResponse compares expected and actual HTTP responses.
@@ -63,6 +64,10 @@ func AssertDBState(expected, actual map[string][]map[string]any, opts *Options) 
 	}
 
 	for table := range allTables {
+		if opts != nil && opts.IgnoreTables != nil && opts.IgnoreTables[table] {
+			continue
+		}
+
 		expectedRows := expected[table]
 		actualRows := actual[table]
 
@@ -134,6 +139,36 @@ func compareRowSets(basePath string, expected, actual []map[string]any, orderIns
 			}
 			return diffs
 		}
+
+		// No ID column — fall back to hash-based set comparison, excluding ignored fields
+		expectedHashes := make(map[string]bool)
+		actualHashes := make(map[string]bool)
+		for _, row := range expected {
+			h := hashRowFiltered(basePath, row, opts)
+			expectedHashes[h] = true
+		}
+		for _, row := range actual {
+			h := hashRowFiltered(basePath, row, opts)
+			actualHashes[h] = true
+		}
+
+		for h := range expectedHashes {
+			if !actualHashes[h] {
+				diffs = append(diffs, Diff{
+					Path:    basePath,
+					Message: "Row in expected but not in actual (order-insensitive set comparison)",
+				})
+			}
+		}
+		for h := range actualHashes {
+			if !expectedHashes[h] {
+				diffs = append(diffs, Diff{
+					Path:    basePath,
+					Message: "Row in actual but not in expected (order-insensitive set comparison)",
+				})
+			}
+		}
+		return diffs
 	}
 
 	// Positional comparison
@@ -320,15 +355,42 @@ func matchGlob(pattern, path string) bool {
 }
 
 func indexRows(rows []map[string]any) map[string]map[string]any {
-	idx := make(map[string]map[string]any)
-	for _, row := range rows {
-		id, ok := row["id"]
-		if !ok {
-			return nil
+	// Try common key columns in priority order
+	for _, keyCol := range []string{"id", "resource_id"} {
+		idx := make(map[string]map[string]any)
+		ok := true
+		for _, row := range rows {
+			val, exists := row[keyCol]
+			if !exists {
+				ok = false
+				break
+			}
+			key := fmt.Sprintf("%v", val)
+			if _, dup := idx[key]; dup {
+				ok = false // Not a unique key
+				break
+			}
+			idx[key] = row
 		}
-		idx[fmt.Sprintf("%v", id)] = row
+		if ok && len(idx) > 0 {
+			return idx
+		}
 	}
-	return idx
+	return nil
+}
+
+// hashRowFiltered returns a deterministic hash of a row, excluding ignored fields.
+func hashRowFiltered(basePath string, row map[string]any, opts *Options) string {
+	filtered := make(map[string]any)
+	for k, v := range row {
+		fieldPath := fmt.Sprintf("%s.%s", basePath, k)
+		if opts != nil && isIgnored(fieldPath, opts.IgnoreFields) {
+			continue
+		}
+		filtered[k] = v
+	}
+	data, _ := json.Marshal(filtered)
+	return string(data)
 }
 
 // normalize converts a value to a comparable form by round-tripping through JSON.
